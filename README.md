@@ -8,20 +8,16 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 
 ## Features
 
-- **Side panel** with a list of reference cards
-- Each card has: **title**, **tags**, **year**, **notes**
-- Click **+** on a card to insert `{id}` at your cursor in the active note
-- Click `{id}` in Live Preview to **navigate** to the card in the side panel
-- **Clickable links** in title and notes — supports URLs, `[[wiki links]]`, and `[label](url)` markdown links
-- Double-click title or notes to edit; click links to navigate
-- **Tag filter** dropdown to quickly find cards
-- **Sort** by index, title, or year (ascending/descending)
-- **Reindex** cards by order of first `{id}` occurrence in the active note (journal citation style)
-- **Undo** reindex to restore previous IDs
-- **Delete** cards with automatic reindexing — updates `{id}` references across all vault files
-- **Undo delete** via notice or header button
-- **Soft wrap** toggle for titles in settings
-- Cards are stored as JSON inside your vault
+- Create and manage reference cards in a side panel
+- Insert `{id}` markers into notes to link cards
+- Click `{id}` in Live Preview to jump to the card
+- Cards support title, tags, year, and notes fields
+- Clickable links in title and notes (URLs, wiki links, markdown links)
+- Filter cards by tag
+- Sort by index, title, or year
+- Reindex cards based on `{id}` order in the current note
+- Undo/Redo for reindex and delete operations
+- Delete cards with automatic reindexing across all vault files
 
 ## Usage
 
