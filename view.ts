@@ -11,6 +11,8 @@ export class ReferenceCardView extends ItemView {
   private settings: ReferenceCardsSettings;
   private filterTag: string = "";
   private searchQuery: string = "";
+  private sortField: "index" | "title" | "year" = "index";
+  private sortAscending: boolean = true;
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
 
@@ -72,10 +74,12 @@ export class ReferenceCardView extends ItemView {
   private renderHeader(): void {
     this.headerEl.empty();
 
-    const addBtn = this.headerEl.createEl("button", { cls: "ref-cards-add-btn", text: "+" });
+    const topRow = this.headerEl.createDiv({ cls: "ref-cards-header-row" });
+
+    const addBtn = topRow.createEl("button", { cls: "ref-cards-add-btn", text: "+" });
     addBtn.addEventListener("click", () => this.addCard());
 
-    const filterSelect = this.headerEl.createEl("select", { cls: "ref-cards-filter" });
+    const filterSelect = topRow.createEl("select", { cls: "ref-cards-filter" });
     const allTags = getAllTags(this.data.cards);
 
     filterSelect.createEl("option", { text: "All tags", value: "" });
@@ -85,6 +89,30 @@ export class ReferenceCardView extends ItemView {
     filterSelect.value = this.filterTag;
     filterSelect.addEventListener("change", () => {
       this.filterTag = filterSelect.value;
+      this.renderCards();
+    });
+
+    const sortRow = this.headerEl.createDiv({ cls: "ref-cards-sort-row" });
+
+    const sortSelect = sortRow.createEl("select", { cls: "ref-cards-sort-select" });
+    sortSelect.createEl("option", { text: "Index", value: "index" });
+    sortSelect.createEl("option", { text: "Title", value: "title" });
+    sortSelect.createEl("option", { text: "Year", value: "year" });
+    sortSelect.value = this.sortField;
+    sortSelect.addEventListener("change", () => {
+      this.sortField = sortSelect.value as "index" | "title" | "year";
+      this.renderCards();
+    });
+
+    const orderBtn = sortRow.createEl("button", {
+      cls: "ref-cards-order-btn",
+      text: this.sortAscending ? "↑" : "↓",
+    });
+    orderBtn.title = this.sortAscending ? "Ascending" : "Descending";
+    orderBtn.addEventListener("click", () => {
+      this.sortAscending = !this.sortAscending;
+      orderBtn.textContent = this.sortAscending ? "↑" : "↓";
+      orderBtn.title = this.sortAscending ? "Ascending" : "Descending";
       this.renderCards();
     });
   }
@@ -102,6 +130,20 @@ export class ReferenceCardView extends ItemView {
         return haystack.includes(this.searchQuery);
       });
     }
+
+    filtered.sort((a, b) => {
+      let cmp = 0;
+      if (this.sortField === "index") {
+        cmp = a.id - b.id;
+      } else if (this.sortField === "title") {
+        cmp = a.title.localeCompare(b.title);
+      } else if (this.sortField === "year") {
+        const ya = parseInt(a.year) || 0;
+        const yb = parseInt(b.year) || 0;
+        cmp = ya - yb;
+      }
+      return this.sortAscending ? cmp : -cmp;
+    });
 
     for (const card of filtered) {
       this.renderCard(card);
