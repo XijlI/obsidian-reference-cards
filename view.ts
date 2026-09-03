@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, App, MarkdownView, MarkdownRenderer } from "obsidian";
+import { ItemView, WorkspaceLeaf, App, MarkdownView, MarkdownRenderer, Notice } from "obsidian";
 import { ReferenceCard, PluginData, createEmptyCard, getAllTags } from "./data";
 import { ReferenceCardsSettings } from "./settings";
 
@@ -8,6 +8,15 @@ interface ReindexSnapshot {
   cards: ReferenceCard[];
   nextId: number;
   idMap: Map<number, number>; // old_id -> new_id
+}
+
+interface DeleteSnapshot {
+  deletedCard: ReferenceCard;
+  deletedIndex: number;
+  oldCards: ReferenceCard[];
+  oldNextId: number;
+  idMap: Map<number, number>;
+  fileChanges: { path: string; originalContent: string }[];
 }
 
 export class ReferenceCardView extends ItemView {
@@ -22,6 +31,7 @@ export class ReferenceCardView extends ItemView {
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
   private reindexSnapshot: ReindexSnapshot | null = null;
+  private deleteSnapshot: DeleteSnapshot | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -137,6 +147,14 @@ export class ReferenceCardView extends ItemView {
     undoBtn.title = "Undo last reindex";
     undoBtn.disabled = !this.reindexSnapshot;
     undoBtn.addEventListener("click", () => this.undoReindex());
+
+    const undoDeleteBtn = sortRow.createEl("button", {
+      cls: "ref-cards-sort-btn" + (this.deleteSnapshot ? "" : " ref-cards-sort-btn-disabled"),
+      text: "Undo Delete",
+    });
+    undoDeleteBtn.title = "Undo last card deletion";
+    undoDeleteBtn.disabled = !this.deleteSnapshot;
+    undoDeleteBtn.addEventListener("click", () => this.undoDelete());
   }
 
   private renderCards(): void {
@@ -432,10 +450,109 @@ export class ReferenceCardView extends ItemView {
   }
 
   async deleteCard(id: number): Promise<void> {
-    this.data.cards = this.data.cards.filter((c) => c.id !== id);
+    const deletedIndex = this.data.cards.findIndex((c) => c.id === id);
+    if (deletedIndex === -1) return;
+
+    const deletedCard = { ...this.data.cards[deletedIndex], tags: [...this.data.cards[deletedIndex].tags] };
+    const oldCards = this.data.cards.map((c) => ({ ...c, tags: [...c.tags] }));
+    const oldNextId = this.data.nextId;
+
+    this.data.cards.splice(deletedIndex, 1);
+
+    // Build old_id -> new_id map for continuous indexing
+    const idMap = new Map<number, number>();
+    this.data.cards.forEach((card, index) => {
+      const newId = index + 1;
+      if (card.id !== newId) {
+        idMap.set(card.id, newId);
+        card.id = newId;
+      }
+    });
+    this.data.nextId = this.data.cards.length + 1;
+
+    // Update markdown references in all vault files
+    const fileChanges: { path: string; originalContent: string }[] = [];
+    if (idMap.size > 0) {
+      const mdFiles = this.app.vault.getMarkdownFiles();
+      for (const file of mdFiles) {
+        const content = await this.app.vault.read(file);
+        if (!/\{\d+\}/.test(content)) continue;
+
+        const newContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+          const oldId = parseInt(idStr, 10);
+          const newId = idMap.get(oldId);
+          return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
+        });
+
+        if (newContent !== content) {
+          fileChanges.push({ path: file.path, originalContent: content });
+          await this.app.vault.modify(file, newContent);
+        }
+      }
+    }
+
+    // Save snapshot for undo
+    this.deleteSnapshot = {
+      deletedCard,
+      deletedIndex,
+      oldCards,
+      oldNextId,
+      idMap,
+      fileChanges,
+    };
+
     await this.saveData();
     this.renderCards();
     this.renderHeader();
+
+    // Show notice with undo option
+    const notice = new Notice(
+      `Deleted card [${deletedCard.id}] "${deletedCard.title}". Click to undo.`,
+      8000
+    );
+    notice.noticeEl.addEventListener("click", () => {
+      this.undoDelete();
+      notice.hide();
+    });
+    notice.noticeEl.style.cursor = "pointer";
+  }
+
+  async undoDelete(): Promise<void> {
+    if (!this.deleteSnapshot) return;
+
+    const { deletedCard, deletedIndex, oldCards, oldNextId, idMap, fileChanges } = this.deleteSnapshot;
+
+    // Restore card data
+    this.data.cards = oldCards;
+    this.data.nextId = oldNextId;
+
+    // Build reverse map: new_id -> old_id
+    const reverseMap = new Map<number, number>();
+    for (const [oldId, newId] of idMap) {
+      reverseMap.set(newId, oldId);
+    }
+
+    // Restore file contents
+    for (const change of fileChanges) {
+      const file = this.app.vault.getAbstractFileByPath(change.path);
+      if (file) {
+        const content = await this.app.vault.read(file as any);
+        const restoredContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+          const curId = parseInt(idStr, 10);
+          const origId = reverseMap.get(curId);
+          return origId !== undefined ? `{${origId}}` : `{${curId}}`;
+        });
+        await this.app.vault.modify(file as any, restoredContent);
+      }
+    }
+
+    this.deleteSnapshot = null;
+
+    await this.saveData();
+    this.renderCards();
+    this.renderHeader();
+
+    new Notice("Delete undone.", 3000);
   }
 
   insertReference(id: number): void {

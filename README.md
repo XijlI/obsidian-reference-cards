@@ -18,6 +18,8 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - **Sort** by index, title, or year (ascending/descending)
 - **Reindex** cards by order of first `{id}` occurrence in the active note (journal citation style)
 - **Undo** reindex to restore previous IDs
+- **Delete** cards with automatic reindexing — updates `{id}` references across all vault files
+- **Undo delete** via notice or header button
 - **Soft wrap** toggle for titles in settings
 - Cards are stored as JSON inside your vault
 
@@ -32,6 +34,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 7. Click **Reindex** to reassign IDs based on `{id}` order in the current note; **Undo** to revert
 8. Double-click title or notes to edit; press Enter or click away to save
 9. Links in title and notes are clickable in view mode (URLs open in browser, wiki links navigate to notes)
+10. Delete a card with **×** — all `{id}` references in the vault are reindexed automatically; click the notice or **Undo Delete** to revert
 
 ## Installation
 
