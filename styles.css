@@ -94,6 +94,13 @@
   flex-shrink: 0;
 }
 
+.ref-cards-sort-btn-icon {
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .ref-cards-sort-btn:hover {
   background: var(--interactive-hover);
 }

@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, App, MarkdownView, MarkdownRenderer, Notice } from "obsidian";
+import { ItemView, WorkspaceLeaf, App, MarkdownView, MarkdownRenderer, Notice, setIcon } from "obsidian";
 import { ReferenceCard, PluginData, createEmptyCard, getAllTags } from "./data";
 import { ReferenceCardsSettings } from "./settings";
 
@@ -31,7 +31,9 @@ export class ReferenceCardView extends ItemView {
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
   private reindexSnapshot: ReindexSnapshot | null = null;
+  private reindexRedoSnapshot: ReindexSnapshot | null = null;
   private deleteSnapshot: DeleteSnapshot | null = null;
+  private deleteRedoSnapshot: { cardId: number } | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -134,27 +136,41 @@ export class ReferenceCardView extends ItemView {
     });
 
     const reindexBtn = sortRow.createEl("button", {
-      cls: "ref-cards-sort-btn",
-      text: "Reindex",
+      cls: "ref-cards-sort-btn ref-cards-sort-btn-icon",
     });
+    setIcon(reindexBtn, "refresh-cw");
     reindexBtn.title = "Reindex cards by order in current file";
     reindexBtn.addEventListener("click", () => this.reindex());
 
     const undoBtn = sortRow.createEl("button", {
-      cls: "ref-cards-sort-btn" + (this.reindexSnapshot ? "" : " ref-cards-sort-btn-disabled"),
-      text: "Undo",
+      cls: "ref-cards-sort-btn ref-cards-sort-btn-icon" + (!this.reindexSnapshot && !this.reindexRedoSnapshot ? " ref-cards-sort-btn-disabled" : ""),
     });
-    undoBtn.title = "Undo last reindex";
-    undoBtn.disabled = !this.reindexSnapshot;
-    undoBtn.addEventListener("click", () => this.undoReindex());
+    if (this.reindexRedoSnapshot) {
+      setIcon(undoBtn, "redo-2");
+      undoBtn.title = "Redo last reindex";
+      undoBtn.disabled = false;
+      undoBtn.addEventListener("click", () => this.redoReindex());
+    } else {
+      setIcon(undoBtn, "undo-2");
+      undoBtn.title = "Undo last reindex";
+      undoBtn.disabled = !this.reindexSnapshot;
+      undoBtn.addEventListener("click", () => this.undoReindex());
+    }
 
     const undoDeleteBtn = sortRow.createEl("button", {
-      cls: "ref-cards-sort-btn" + (this.deleteSnapshot ? "" : " ref-cards-sort-btn-disabled"),
-      text: "Undo Delete",
+      cls: "ref-cards-sort-btn ref-cards-sort-btn-icon" + (!this.deleteSnapshot && !this.deleteRedoSnapshot ? " ref-cards-sort-btn-disabled" : ""),
     });
-    undoDeleteBtn.title = "Undo last card deletion";
-    undoDeleteBtn.disabled = !this.deleteSnapshot;
-    undoDeleteBtn.addEventListener("click", () => this.undoDelete());
+    if (this.deleteRedoSnapshot) {
+      setIcon(undoDeleteBtn, "redo-2");
+      undoDeleteBtn.title = "Redo last card deletion";
+      undoDeleteBtn.disabled = false;
+      undoDeleteBtn.addEventListener("click", () => this.redoDelete());
+    } else {
+      setIcon(undoDeleteBtn, "history");
+      undoDeleteBtn.title = "Undo last card deletion";
+      undoDeleteBtn.disabled = !this.deleteSnapshot;
+      undoDeleteBtn.addEventListener("click", () => this.undoDelete());
+    }
   }
 
   private renderCards(): void {
@@ -450,6 +466,7 @@ export class ReferenceCardView extends ItemView {
   }
 
   async deleteCard(id: number): Promise<void> {
+    this.deleteRedoSnapshot = null;
     const deletedIndex = this.data.cards.findIndex((c) => c.id === id);
     if (deletedIndex === -1) return;
 
@@ -522,6 +539,9 @@ export class ReferenceCardView extends ItemView {
 
     const { deletedCard, deletedIndex, oldCards, oldNextId, idMap, fileChanges } = this.deleteSnapshot;
 
+    // Save redo snapshot with the card id to re-delete
+    this.deleteRedoSnapshot = { cardId: deletedCard.id };
+
     // Restore card data
     this.data.cards = oldCards;
     this.data.nextId = oldNextId;
@@ -553,6 +573,48 @@ export class ReferenceCardView extends ItemView {
     this.renderHeader();
 
     new Notice("Delete undone.", 3000);
+  }
+
+  async redoReindex(): Promise<void> {
+    if (!this.reindexRedoSnapshot) return;
+
+    const mdView = this.getLastMarkdownView();
+    if (!mdView) return;
+
+    const { cards, nextId, idMap } = this.reindexRedoSnapshot;
+
+    // Save undo snapshot with current state (before redo)
+    this.reindexSnapshot = {
+      cards: this.data.cards.map((c) => ({ ...c, tags: [...c.tags] })),
+      nextId: this.data.nextId,
+      idMap,
+    };
+
+    // Apply the reindex using the idMap
+    const editor = mdView.editor;
+    const content = editor.getValue();
+    const newContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+      const oldId = parseInt(idStr, 10);
+      const newId = idMap.get(oldId);
+      return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
+    });
+    editor.setValue(newContent);
+
+    // Restore reindexed card data
+    this.data.cards = cards;
+    this.data.nextId = nextId;
+    this.reindexRedoSnapshot = null;
+
+    await this.saveData();
+    this.renderAll();
+  }
+
+  async redoDelete(): Promise<void> {
+    if (!this.deleteRedoSnapshot) return;
+
+    const { cardId } = this.deleteRedoSnapshot;
+    this.deleteRedoSnapshot = null;
+    await this.deleteCard(cardId);
   }
 
   insertReference(id: number): void {
@@ -600,6 +662,7 @@ export class ReferenceCardView extends ItemView {
   }
 
   async reindex(): Promise<void> {
+    this.reindexRedoSnapshot = null;
     const mdView = this.getLastMarkdownView();
     if (!mdView) return;
 
@@ -665,6 +728,13 @@ export class ReferenceCardView extends ItemView {
 
     const mdView = this.getLastMarkdownView();
     if (!mdView) return;
+
+    // Save redo snapshot with current state (after reindex) and the idMap
+    this.reindexRedoSnapshot = {
+      cards: this.data.cards.map((c) => ({ ...c, tags: [...c.tags] })),
+      nextId: this.data.nextId,
+      idMap: this.reindexSnapshot.idMap,
+    };
 
     // Build reverse map: new_id -> old_id
     const reverseMap = new Map<number, number>();
