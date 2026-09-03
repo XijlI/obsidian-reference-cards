@@ -4,6 +4,12 @@ import { ReferenceCardsSettings } from "./settings";
 
 export const VIEW_TYPE = "reference-cards-view";
 
+interface ReindexSnapshot {
+  cards: ReferenceCard[];
+  nextId: number;
+  idMap: Map<number, number>; // old_id -> new_id
+}
+
 export class ReferenceCardView extends ItemView {
   private data: PluginData;
   private saveData: () => Promise<void>;
@@ -15,6 +21,7 @@ export class ReferenceCardView extends ItemView {
   private sortAscending: boolean = true;
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
+  private reindexSnapshot: ReindexSnapshot | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -115,6 +122,21 @@ export class ReferenceCardView extends ItemView {
       orderBtn.title = this.sortAscending ? "Ascending" : "Descending";
       this.renderCards();
     });
+
+    const reindexBtn = sortRow.createEl("button", {
+      cls: "ref-cards-sort-btn",
+      text: "Reindex",
+    });
+    reindexBtn.title = "Reindex cards by order in current file";
+    reindexBtn.addEventListener("click", () => this.reindex());
+
+    const undoBtn = sortRow.createEl("button", {
+      cls: "ref-cards-sort-btn" + (this.reindexSnapshot ? "" : " ref-cards-sort-btn-disabled"),
+      text: "Undo",
+    });
+    undoBtn.title = "Undo last reindex";
+    undoBtn.disabled = !this.reindexSnapshot;
+    undoBtn.addEventListener("click", () => this.undoReindex());
   }
 
   private renderCards(): void {
@@ -296,5 +318,97 @@ export class ReferenceCardView extends ItemView {
   renderAll(): void {
     this.renderHeader();
     this.renderCards();
+  }
+
+  async reindex(): Promise<void> {
+    const mdView = this.getLastMarkdownView();
+    if (!mdView) return;
+
+    const editor = mdView.editor;
+    const content = editor.getValue();
+    const refRegex = /\{(\d+)\}/g;
+
+    // Collect ids in order of first appearance
+    const seen = new Set<number>();
+    const orderedIds: number[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = refRegex.exec(content)) !== null) {
+      const id = parseInt(match[1], 10);
+      if (!seen.has(id)) {
+        seen.add(id);
+        orderedIds.push(id);
+      }
+    }
+
+    // Append cards not mentioned, in their current order
+    for (const card of this.data.cards) {
+      if (!seen.has(card.id)) {
+        orderedIds.push(card.id);
+      }
+    }
+
+    // Build old_id -> new_id map
+    const idMap = new Map<number, number>();
+    for (let i = 0; i < orderedIds.length; i++) {
+      idMap.set(orderedIds[i], i + 1);
+    }
+
+    // Save snapshot for undo
+    this.reindexSnapshot = {
+      cards: this.data.cards.map((c) => ({ ...c, tags: [...c.tags] })),
+      nextId: this.data.nextId,
+      idMap,
+    };
+
+    // Update markdown references
+    const newContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+      const oldId = parseInt(idStr, 10);
+      const newId = idMap.get(oldId);
+      return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
+    });
+    editor.setValue(newContent);
+
+    // Update card ids
+    for (const card of this.data.cards) {
+      const newId = idMap.get(card.id);
+      if (newId !== undefined) {
+        card.id = newId;
+      }
+    }
+    this.data.nextId = orderedIds.length + 1;
+
+    await this.saveData();
+    this.renderAll();
+  }
+
+  async undoReindex(): Promise<void> {
+    if (!this.reindexSnapshot) return;
+
+    const mdView = this.getLastMarkdownView();
+    if (!mdView) return;
+
+    // Build reverse map: new_id -> old_id
+    const reverseMap = new Map<number, number>();
+    for (const [oldId, newId] of this.reindexSnapshot.idMap) {
+      reverseMap.set(newId, oldId);
+    }
+
+    // Update markdown references back
+    const editor = mdView.editor;
+    const content = editor.getValue();
+    const newContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+      const curId = parseInt(idStr, 10);
+      const origId = reverseMap.get(curId);
+      return origId !== undefined ? `{${origId}}` : `{${curId}}`;
+    });
+    editor.setValue(newContent);
+
+    // Restore card data
+    this.data.cards = this.reindexSnapshot.cards;
+    this.data.nextId = this.reindexSnapshot.nextId;
+    this.reindexSnapshot = null;
+
+    await this.saveData();
+    this.renderAll();
   }
 }
