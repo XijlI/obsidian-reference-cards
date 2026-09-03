@@ -22,15 +22,13 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 ## Usage
 
 1. Open the side panel via the ribbon icon or command palette → "Open Reference Cards"
-2. Click **+** in the header to create a new card
-3. Fill in the title, tags (comma-separated), year, and notes
-4. Position your cursor in a note, then click **+** on a card to insert `{id}`
-5. In Live Preview, click any `{id}` to jump to that card in the side panel
-6. Use the **sort dropdown** and **↑↓** button to change card ordering
-7. Click **Reindex** to reassign IDs based on `{id}` order in the current note; **Undo** to revert
-8. Double-click title or notes to edit; press Enter or click away to save
-9. Links in title and notes are clickable in view mode (URLs open in browser, wiki links navigate to notes)
-10. Delete a card with **×** — all `{id}` references in the vault are reindexed automatically; click the notice or **Undo Delete** to revert
+2. Click **+** to create a card, fill in title, tags, year, and notes
+3. Place cursor in a note, click **+** on a card to insert `{id}`
+4. Click `{id}` in Live Preview to jump to that card
+5. Use the sort dropdown and arrow button to change card order
+6. Use the toolbar buttons for reindex, undo, and redo
+7. Double-click title or notes to edit
+8. Delete a card with **×** — vault references are reindexed automatically
 
 ## Installation
 
