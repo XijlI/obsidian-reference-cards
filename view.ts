@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, App, MarkdownView } from "obsidian";
+import { ItemView, WorkspaceLeaf, App, MarkdownView, MarkdownRenderer } from "obsidian";
 import { ReferenceCard, PluginData, createEmptyCard, getAllTags } from "./data";
 import { ReferenceCardsSettings } from "./settings";
 
@@ -179,12 +179,44 @@ export class ReferenceCardView extends ItemView {
 
     const idBadge = topRow.createSpan({ cls: "ref-card-id", text: `[${card.id}]` });
 
-    const titleInput = topRow.createDiv({
-      cls: "ref-card-title-input" + (this.settings.titleSoftWrap ? " ref-card-title-softwrap" : ""),
+    const titleContainer = topRow.createDiv({
+      cls: "ref-card-title-container" + (this.settings.titleSoftWrap ? " ref-card-title-softwrap" : ""),
+    });
+
+    const titleView = titleContainer.createDiv({
+      cls: "ref-card-title-view",
+      attr: { "data-placeholder": "Title..." },
+    });
+    this.renderTextWithLinks(card.title, titleView);
+
+    const titleInput = titleContainer.createDiv({
+      cls: "ref-card-title-edit" + (this.settings.titleSoftWrap ? " ref-card-title-softwrap" : ""),
       attr: { "data-placeholder": "Title..." },
     });
     titleInput.contentEditable = "true";
     titleInput.textContent = card.title;
+    titleInput.style.display = "none";
+
+    const showTitleEdit = () => {
+      titleView.style.display = "none";
+      titleInput.style.display = "block";
+      titleInput.focus();
+    };
+
+    const hideTitleEdit = () => {
+      titleView.style.display = "";
+      titleInput.style.display = "none";
+      titleView.empty();
+      this.renderTextWithLinks(card.title, titleView);
+    };
+
+    titleView.addEventListener("dblclick", showTitleEdit);
+    titleInput.addEventListener("blur", hideTitleEdit);
+    titleInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        titleInput.blur();
+      }
+    });
     titleInput.addEventListener("input", () => {
       card.title = titleInput.textContent || "";
       this.debouncedSave();
@@ -228,22 +260,152 @@ export class ReferenceCardView extends ItemView {
       this.debouncedSave();
     });
 
-    const notesArea = cardEl.createEl("textarea", {
-      cls: "ref-card-notes",
+    const notesContainer = cardEl.createDiv({ cls: "ref-card-notes-container" });
+
+    const notesView = notesContainer.createDiv({
+      cls: "ref-card-notes-view",
+      attr: { "data-placeholder": "Notes..." },
+    });
+    this.renderTextWithLinks(card.notes, notesView);
+
+    const notesArea = notesContainer.createEl("textarea", {
+      cls: "ref-card-notes-edit",
       attr: { placeholder: "Notes..." },
     });
     notesArea.value = card.notes;
+    notesArea.style.display = "none";
+
+    const showNotesEdit = () => {
+      notesView.style.display = "none";
+      notesArea.style.display = "block";
+      notesArea.focus();
+      this.resizeTextarea(notesArea);
+    };
+
+    const hideNotesEdit = () => {
+      notesView.style.display = "";
+      notesArea.style.display = "none";
+      notesView.empty();
+      this.renderTextWithLinks(card.notes, notesView);
+    };
+
+    notesView.addEventListener("dblclick", showNotesEdit);
+    notesArea.addEventListener("blur", hideNotesEdit);
+    notesArea.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        notesArea.blur();
+      }
+    });
     notesArea.addEventListener("input", () => {
       card.notes = notesArea.value;
       this.resizeTextarea(notesArea);
       this.debouncedSave();
     });
-    this.resizeTextarea(notesArea);
   }
 
   private resizeTextarea(textarea: HTMLTextAreaElement): void {
     textarea.style.height = "auto";
     textarea.style.height = textarea.scrollHeight + "px";
+  }
+
+  private renderTextWithLinks(text: string, container: HTMLElement): void {
+    const urlRegex = /(https?:\/\/[^\s<]+[^<.,;:"'\s])/g;
+    const wikiLinkRegex = /\[\[([^\]]+)\]\]/g;
+    const mdLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+
+    const parts: { text: string; type: 'text' | 'url' | 'wikilink' | 'mdlink'; url?: string }[] = [];
+    let lastIndex = 0;
+
+    // Find URLs
+    let match: RegExpExecArray | null;
+    const urlMatches: { start: number; end: number; url: string }[] = [];
+    while ((match = urlRegex.exec(text)) !== null) {
+      urlMatches.push({ start: match.index, end: match.index + match[0].length, url: match[0] });
+    }
+
+    // Find wiki links
+    const wikiMatches: { start: number; end: number; link: string }[] = [];
+    while ((match = wikiLinkRegex.exec(text)) !== null) {
+      wikiMatches.push({ start: match.index, end: match.index + match[0].length, link: match[1] });
+    }
+
+    // Find markdown links
+    const mdMatches: { start: number; end: number; label: string; url: string }[] = [];
+    while ((match = mdLinkRegex.exec(text)) !== null) {
+      mdMatches.push({ start: match.index, end: match.index + match[0].length, label: match[1], url: match[2] });
+    }
+
+    // Merge all matches and sort by position
+    const allMatches: { start: number; end: number; type: 'url' | 'wikilink' | 'mdlink'; value: string; label?: string }[] = [];
+    for (const m of urlMatches) {
+      allMatches.push({ start: m.start, end: m.end, type: 'url', value: m.url });
+    }
+    for (const m of wikiMatches) {
+      allMatches.push({ start: m.start, end: m.end, type: 'wikilink', value: m.link });
+    }
+    for (const m of mdMatches) {
+      allMatches.push({ start: m.start, end: m.end, type: 'mdlink', value: m.url, label: m.label });
+    }
+    allMatches.sort((a, b) => a.start - b.start);
+
+    // Remove overlapping matches (prefer earlier matches)
+    const filteredMatches: typeof allMatches = [];
+    let lastEnd = 0;
+    for (const m of allMatches) {
+      if (m.start >= lastEnd) {
+        filteredMatches.push(m);
+        lastEnd = m.end;
+      }
+    }
+
+    // Build parts
+    for (const m of filteredMatches) {
+      if (m.start > lastIndex) {
+        parts.push({ text: text.slice(lastIndex, m.start), type: 'text' });
+      }
+      if (m.type === 'wikilink') {
+        parts.push({ text: `[[${m.value}]]`, type: 'wikilink', url: m.value });
+      } else if (m.type === 'mdlink') {
+        parts.push({ text: m.label!, type: 'mdlink', url: m.value });
+      } else {
+        parts.push({ text: m.value, type: 'url', url: m.value });
+      }
+      lastIndex = m.end;
+    }
+    if (lastIndex < text.length) {
+      parts.push({ text: text.slice(lastIndex), type: 'text' });
+    }
+
+    // Render parts
+    for (const part of parts) {
+      if (part.type === 'text') {
+        container.createSpan({ text: part.text });
+      } else if (part.type === 'url' || part.type === 'mdlink') {
+        const link = container.createEl('a', {
+          cls: 'ref-card-link ref-card-url-link',
+          text: part.text,
+          href: part.url,
+        });
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(part.url, '_blank');
+        });
+      } else if (part.type === 'wikilink') {
+        const link = container.createEl('a', {
+          cls: 'ref-card-link ref-card-wikilink',
+          text: part.text,
+        });
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const file = this.app.metadataCache.getFirstLinkpathDest(part.url!, '');
+          if (file) {
+            this.app.workspace.openLinkText(file.path, '', false);
+          }
+        });
+      }
+    }
   }
 
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;

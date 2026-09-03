@@ -183,11 +183,48 @@
   flex-shrink: 0;
 }
 
-.ref-card-title-input {
+.ref-card-title-container {
+  flex: 1;
+  min-width: 0;
+}
+
+.ref-card-title-view {
   flex: 1;
   min-width: 0;
   border: none;
   border-bottom: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-normal);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 2px 4px;
+  line-height: 1.4;
+  min-height: 1.4em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+
+.ref-card-title-container.ref-card-title-softwrap .ref-card-title-view {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.ref-card-title-view:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.ref-card-title-edit {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-bottom: 1px solid var(--text-accent);
   background: transparent;
   color: var(--text-normal);
   font-size: 14px;
@@ -201,7 +238,7 @@
   text-overflow: ellipsis;
 }
 
-.ref-card-title-input.ref-card-title-softwrap {
+.ref-card-title-container.ref-card-title-softwrap .ref-card-title-edit {
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -209,14 +246,10 @@
   text-overflow: unset;
 }
 
-.ref-card-title-input:empty::before {
+.ref-card-title-edit:empty::before {
   content: attr(data-placeholder);
   color: var(--text-muted);
   pointer-events: none;
-}
-
-.ref-card-title-input:focus {
-  border-bottom-color: var(--text-accent);
 }
 
 .ref-card-insert-btn {
@@ -291,7 +324,12 @@
   border-color: var(--text-accent);
 }
 
-.ref-card-notes {
+.ref-card-notes-container {
+  width: 100%;
+  min-width: 0;
+}
+
+.ref-card-notes-view {
   width: 100%;
   min-width: 0;
   min-height: 48px;
@@ -301,13 +339,32 @@
   color: var(--text-normal);
   font-size: 13px;
   padding: 6px;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  cursor: text;
+}
+
+.ref-card-notes-view:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.ref-card-notes-edit {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid var(--text-accent);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 13px;
+  padding: 6px;
   outline: none;
   resize: none;
   font-family: inherit;
-}
-
-.ref-card-notes:focus {
-  border-color: var(--text-accent);
 }
 
 /* Editor link widget */
@@ -324,4 +381,12 @@
   color: var(--text-accent-hover);
   background: var(--text-highlight-bg);
   border-radius: 2px;
+}
+
+.ref-card-url-link {
+  text-decoration-style: solid;
+}
+
+.ref-card-wikilink {
+  text-decoration-style: dashed;
 }

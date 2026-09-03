@@ -12,6 +12,8 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - Each card has: **title**, **tags**, **year**, **notes**
 - Click **+** on a card to insert `{id}` at your cursor in the active note
 - Click `{id}` in Live Preview to **navigate** to the card in the side panel
+- **Clickable links** in title and notes — supports URLs, `[[wiki links]]`, and `[label](url)` markdown links
+- Double-click title or notes to edit; click links to navigate
 - **Tag filter** dropdown to quickly find cards
 - **Sort** by index, title, or year (ascending/descending)
 - **Reindex** cards by order of first `{id}` occurrence in the active note (journal citation style)
@@ -28,6 +30,8 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 5. In Live Preview, click any `{id}` to jump to that card in the side panel
 6. Use the **sort dropdown** and **↑↓** button to change card ordering
 7. Click **Reindex** to reassign IDs based on `{id}` order in the current note; **Undo** to revert
+8. Double-click title or notes to edit; press Enter or click away to save
+9. Links in title and notes are clickable in view mode (URLs open in browser, wiki links navigate to notes)
 
 ## Installation
 
