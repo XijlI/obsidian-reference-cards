@@ -13,6 +13,9 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - Click **+** on a card to insert `{id}` at your cursor in the active note
 - Click `{id}` in Live Preview to **navigate** to the card in the side panel
 - **Tag filter** dropdown to quickly find cards
+- **Sort** by index, title, or year (ascending/descending)
+- **Reindex** cards by order of first `{id}` occurrence in the active note (journal citation style)
+- **Undo** reindex to restore previous IDs
 - **Soft wrap** toggle for titles in settings
 - Cards are stored as JSON inside your vault
 
@@ -23,6 +26,8 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 3. Fill in the title, tags (comma-separated), year, and notes
 4. Position your cursor in a note, then click **+** on a card to insert `{id}`
 5. In Live Preview, click any `{id}` to jump to that card in the side panel
+6. Use the **sort dropdown** and **↑↓** button to change card ordering
+7. Click **Reindex** to reassign IDs based on `{id}` order in the current note; **Undo** to revert
 
 ## Installation
 
