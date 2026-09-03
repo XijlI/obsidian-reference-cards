@@ -1,0 +1,43 @@
+{
+  "cards": [
+    {
+      "id": 1,
+      "title": "Gut bacterial regulation of primate adaptive thermogenesis at high altitude",
+      "tags": [
+        "1",
+        "2"
+      ],
+      "year": "2026",
+      "notes": "[Gut bacterial regulation of primate adaptive thermogenesis at high altitude | Microbiome | Springer Nature Link](https://link.springer.com/article/10.1186/s40168-026-02425-6)"
+    },
+    {
+      "id": 2,
+      "title": "2",
+      "tags": [],
+      "year": "",
+      "notes": ""
+    },
+    {
+      "id": 3,
+      "title": "3",
+      "tags": [],
+      "year": "",
+      "notes": ""
+    },
+    {
+      "id": 4,
+      "title": "4",
+      "tags": [],
+      "year": "",
+      "notes": ""
+    },
+    {
+      "id": 5,
+      "title": "5",
+      "tags": [],
+      "year": "",
+      "notes": ""
+    }
+  ],
+  "nextId": 6
+}
