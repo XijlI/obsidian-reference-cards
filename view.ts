@@ -10,6 +10,7 @@ export class ReferenceCardView extends ItemView {
   private getLastMarkdownView: () => MarkdownView | null;
   private settings: ReferenceCardsSettings;
   private filterTag: string = "";
+  private searchQuery: string = "";
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
 
@@ -49,6 +50,17 @@ export class ReferenceCardView extends ItemView {
     this.headerEl = container.createDiv({ cls: "ref-cards-header" });
     this.renderHeader();
 
+    const searchRow = container.createDiv({ cls: "ref-cards-search" });
+    const searchInput = searchRow.createEl("input", {
+      cls: "ref-cards-search-input",
+      attr: { type: "text", placeholder: "Search cards..." },
+    });
+    searchInput.value = this.searchQuery;
+    searchInput.addEventListener("input", () => {
+      this.searchQuery = searchInput.value.toLowerCase();
+      this.renderCards();
+    });
+
     this.cardContainer = container.createDiv({ cls: "ref-cards-list" });
     this.renderCards();
   }
@@ -80,9 +92,16 @@ export class ReferenceCardView extends ItemView {
   private renderCards(): void {
     this.cardContainer.empty();
 
-    const filtered = this.filterTag
+    let filtered = this.filterTag
       ? this.data.cards.filter((c) => c.tags.includes(this.filterTag))
       : this.data.cards;
+
+    if (this.searchQuery) {
+      filtered = filtered.filter((c) => {
+        const haystack = [c.title, c.tags.join(" "), c.year, c.notes].join(" ").toLowerCase();
+        return haystack.includes(this.searchQuery);
+      });
+    }
 
     for (const card of filtered) {
       this.renderCard(card);
