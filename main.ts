@@ -2,14 +2,19 @@ import { Plugin, WorkspaceLeaf, MarkdownView } from "obsidian";
 import { PluginData, DEFAULT_DATA } from "./data";
 import { ReferenceCardView, VIEW_TYPE } from "./view";
 import { createEditorPlugin } from "./editor-plugin";
+import { ReferenceCardsSettings, DEFAULT_SETTINGS, ReferenceCardsSettingTab } from "./settings";
 
 export default class ReferenceCardsPlugin extends Plugin {
   private data: PluginData;
   private view: ReferenceCardView | null = null;
   private lastMarkdownView: MarkdownView | null = null;
+  settings: ReferenceCardsSettings;
 
   async onload(): Promise<void> {
     this.data = Object.assign({}, DEFAULT_DATA, await this.loadData());
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadSettings());
+
+    this.addSettingTab(new ReferenceCardsSettingTab(this.app, this));
 
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
@@ -25,7 +30,8 @@ export default class ReferenceCardsPlugin extends Plugin {
         this.app,
         this.data,
         () => this.savePluginData(),
-        () => this.lastMarkdownView
+        () => this.lastMarkdownView,
+        this.settings
       );
       return this.view;
     });
@@ -65,6 +71,20 @@ export default class ReferenceCardsPlugin extends Plugin {
     if (!leaf) return;
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
     this.app.workspace.revealLeaf(leaf);
+  }
+
+  refreshView(): void {
+    if (this.view) {
+      this.view.renderAll();
+    }
+  }
+
+  async loadSettings(): Promise<ReferenceCardsSettings> {
+    return Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
   }
 
   private async savePluginData(): Promise<void> {

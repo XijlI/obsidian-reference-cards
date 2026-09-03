@@ -27,7 +27,7 @@ __export(main_exports, {
   default: () => ReferenceCardsPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian2 = require("obsidian");
+var import_obsidian3 = require("obsidian");
 
 // data.ts
 var DEFAULT_DATA = {
@@ -57,7 +57,7 @@ function getAllTags(cards) {
 var import_obsidian = require("obsidian");
 var VIEW_TYPE = "reference-cards-view";
 var ReferenceCardView = class extends import_obsidian.ItemView {
-  constructor(leaf, app, data, saveData, getLastMarkdownView) {
+  constructor(leaf, app, data, saveData, getLastMarkdownView, settings) {
     super(leaf);
     this.filterTag = "";
     this.saveTimeout = null;
@@ -65,6 +65,7 @@ var ReferenceCardView = class extends import_obsidian.ItemView {
     this.data = data;
     this.saveData = saveData;
     this.getLastMarkdownView = getLastMarkdownView;
+    this.settings = settings;
   }
   getViewType() {
     return VIEW_TYPE;
@@ -114,7 +115,7 @@ var ReferenceCardView = class extends import_obsidian.ItemView {
     const topRow = cardEl.createDiv({ cls: "ref-card-top" });
     const idBadge = topRow.createSpan({ cls: "ref-card-id", text: `[${card.id}]` });
     const titleInput = topRow.createDiv({
-      cls: "ref-card-title-input",
+      cls: "ref-card-title-input" + (this.settings.titleSoftWrap ? " ref-card-title-softwrap" : ""),
       attr: { "data-placeholder": "Title..." }
     });
     titleInput.contentEditable = "true";
@@ -229,6 +230,10 @@ var ReferenceCardView = class extends import_obsidian.ItemView {
   updateData(data) {
     this.data = data;
   }
+  renderAll() {
+    this.renderHeader();
+    this.renderCards();
+  }
 };
 
 // editor-plugin.ts
@@ -278,8 +283,31 @@ function createEditorPlugin(onNavigate) {
   );
 }
 
+// settings.ts
+var import_obsidian2 = require("obsidian");
+var DEFAULT_SETTINGS = {
+  titleSoftWrap: true
+};
+var ReferenceCardsSettingTab = class extends import_obsidian2.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    new import_obsidian2.Setting(containerEl).setName("Title soft wrap").setDesc("Allow long titles to wrap across multiple lines.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.titleSoftWrap).onChange(async (value) => {
+        this.plugin.settings.titleSoftWrap = value;
+        await this.plugin.saveSettings();
+        this.plugin.refreshView();
+      })
+    );
+  }
+};
+
 // main.ts
-var ReferenceCardsPlugin = class extends import_obsidian2.Plugin {
+var ReferenceCardsPlugin = class extends import_obsidian3.Plugin {
   constructor() {
     super(...arguments);
     this.view = null;
@@ -287,9 +315,11 @@ var ReferenceCardsPlugin = class extends import_obsidian2.Plugin {
   }
   async onload() {
     this.data = Object.assign({}, DEFAULT_DATA, await this.loadData());
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadSettings());
+    this.addSettingTab(new ReferenceCardsSettingTab(this.app, this));
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
-        if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian2.MarkdownView) {
+        if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian3.MarkdownView) {
           this.lastMarkdownView = leaf.view;
         }
       })
@@ -300,7 +330,8 @@ var ReferenceCardsPlugin = class extends import_obsidian2.Plugin {
         this.app,
         this.data,
         () => this.savePluginData(),
-        () => this.lastMarkdownView
+        () => this.lastMarkdownView,
+        this.settings
       );
       return this.view;
     });
@@ -335,6 +366,17 @@ var ReferenceCardsPlugin = class extends import_obsidian2.Plugin {
       return;
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
     this.app.workspace.revealLeaf(leaf);
+  }
+  refreshView() {
+    if (this.view) {
+      this.view.renderAll();
+    }
+  }
+  async loadSettings() {
+    return Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+  async saveSettings() {
+    await this.saveData(this.settings);
   }
   async savePluginData() {
     await this.saveData(this.data);

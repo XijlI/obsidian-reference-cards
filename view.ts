@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf, App, MarkdownView } from "obsidian";
 import { ReferenceCard, PluginData, createEmptyCard, getAllTags } from "./data";
+import { ReferenceCardsSettings } from "./settings";
 
 export const VIEW_TYPE = "reference-cards-view";
 
@@ -7,6 +8,7 @@ export class ReferenceCardView extends ItemView {
   private data: PluginData;
   private saveData: () => Promise<void>;
   private getLastMarkdownView: () => MarkdownView | null;
+  private settings: ReferenceCardsSettings;
   private filterTag: string = "";
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
@@ -16,13 +18,15 @@ export class ReferenceCardView extends ItemView {
     app: App,
     data: PluginData,
     saveData: () => Promise<void>,
-    getLastMarkdownView: () => MarkdownView | null
+    getLastMarkdownView: () => MarkdownView | null,
+    settings: ReferenceCardsSettings
   ) {
     super(leaf);
     this.app = app;
     this.data = data;
     this.saveData = saveData;
     this.getLastMarkdownView = getLastMarkdownView;
+    this.settings = settings;
   }
 
   getViewType(): string {
@@ -93,7 +97,7 @@ export class ReferenceCardView extends ItemView {
     const idBadge = topRow.createSpan({ cls: "ref-card-id", text: `[${card.id}]` });
 
     const titleInput = topRow.createDiv({
-      cls: "ref-card-title-input",
+      cls: "ref-card-title-input" + (this.settings.titleSoftWrap ? " ref-card-title-softwrap" : ""),
       attr: { "data-placeholder": "Title..." },
     });
     titleInput.contentEditable = "true";
@@ -226,5 +230,10 @@ export class ReferenceCardView extends ItemView {
 
   updateData(data: PluginData): void {
     this.data = data;
+  }
+
+  renderAll(): void {
+    this.renderHeader();
+    this.renderCards();
   }
 }

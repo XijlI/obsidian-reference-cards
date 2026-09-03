@@ -110,9 +110,17 @@
   outline: none;
   line-height: 1.4;
   min-height: 1.4em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ref-card-title-input.ref-card-title-softwrap {
+  white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .ref-card-title-input:empty::before {
