@@ -1,0 +1,5 @@
+docs/
+git.sh
+.git
+node_modules/
+data.json

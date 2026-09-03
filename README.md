@@ -1,0 +1,45 @@
+# Reference Cards for Obsidian
+
+Manage reference cards in a side panel and link them to your notes with `{id}` markers.
+
+## Features
+
+- **Side panel** with a list of reference cards
+- Each card has: **title**, **tags**, **year**, **notes**
+- Click **+** on a card to insert `{id}` at your cursor in the active note
+- Click `{id}` in Live Preview to **navigate** to the card in the side panel
+- **Tag filter** dropdown to quickly find cards
+- **Soft wrap** toggle for titles in settings
+- Cards are stored as JSON inside your vault
+
+## Usage
+
+1. Open the side panel via the ribbon icon or command palette → "Open Reference Cards"
+2. Click **+** in the header to create a new card
+3. Fill in the title, tags (comma-separated), year, and notes
+4. Position your cursor in a note, then click **+** on a card to insert `{id}`
+5. In Live Preview, click any `{id}` to jump to that card in the side panel
+
+## Installation
+
+### From Community Plugins
+
+1. Open Settings → Community Plugins → Browse
+2. Search for "Reference Cards"
+3. Install and enable
+
+### Manual
+
+1. Download `main.js`, `manifest.json`, `styles.css` from the latest release
+2. Copy them to `.obsidian/plugins/reference-cards/` in your vault
+3. Enable the plugin in Settings → Community Plugins
+
+## Settings
+
+| Setting | Description |
+|---------|-------------|
+| Title soft wrap | Allow long titles to wrap across multiple lines (default: on) |
+
+## License
+
+MIT
