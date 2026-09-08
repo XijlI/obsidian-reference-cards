@@ -18,6 +18,8 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - Reindex cards based on `{id}` order in the current note
 - Undo/Redo for reindex and delete operations
 - Delete cards with automatic reindexing across all vault files
+- Show which vault files reference a card via the **?** button
+- Configurable card font size (10–20px)
 
 ## Usage
 
@@ -29,6 +31,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 6. Use the toolbar buttons for reindex, undo, and redo
 7. Double-click title or notes to edit
 8. Delete a card with **×** — vault references are reindexed automatically
+9. Click **?** on a card to see which files reference it
 
 ## Installation
 
@@ -49,6 +52,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 | Setting | Description |
 |---------|-------------|
 | Title soft wrap | Allow long titles to wrap across multiple lines (default: on) |
+| Card font size | Adjust the font size of card content, 10–20px (default: 13) |
 
 ## License
 

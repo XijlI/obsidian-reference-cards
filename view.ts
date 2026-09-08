@@ -34,6 +34,8 @@ export class ReferenceCardView extends ItemView {
   private reindexRedoSnapshot: ReindexSnapshot | null = null;
   private deleteSnapshot: DeleteSnapshot | null = null;
   private deleteRedoSnapshot: { cardId: number } | null = null;
+  private activeBacklinksPopup: HTMLElement | null = null;
+  private activeBacklinksCleanup: (() => void) | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -261,6 +263,13 @@ export class ReferenceCardView extends ItemView {
     insertBtn.title = "Insert reference at cursor";
     insertBtn.addEventListener("click", () => this.insertReference(card.id));
 
+    const backlinksBtn = topRow.createEl("button", { cls: "ref-card-backlinks-btn", text: "?" });
+    backlinksBtn.title = "Show files referencing this card";
+    backlinksBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.toggleBacklinksPopup(card.id, cardEl, backlinksBtn);
+    });
+
     const deleteBtn = topRow.createEl("button", { cls: "ref-card-delete-btn", text: "×" });
     deleteBtn.title = "Delete card";
     deleteBtn.addEventListener("click", () => this.deleteCard(card.id));
@@ -341,6 +350,130 @@ export class ReferenceCardView extends ItemView {
   private resizeTextarea(textarea: HTMLTextAreaElement): void {
     textarea.style.height = "auto";
     textarea.style.height = textarea.scrollHeight + "px";
+  }
+
+  private toggleBacklinksPopup(cardId: number, cardEl: HTMLElement, btnEl: HTMLElement): void {
+    if (this.activeBacklinksPopup) {
+      const wasSame = this.activeBacklinksPopup.dataset.cardId === String(cardId);
+      this.closeBacklinksPopup();
+      if (wasSame) return;
+    }
+
+    const popup = cardEl.createDiv({ cls: "ref-card-backlinks-popup" });
+    const btnRect = btnEl.getBoundingClientRect();
+    const cardRect = cardEl.getBoundingClientRect();
+    popup.style.top = (btnRect.bottom - cardRect.top + 4) + "px";
+    popup.style.left = "0";
+    popup.dataset.cardId = String(cardId);
+    popup.createDiv({ cls: "ref-card-backlinks-loading", text: "Searching..." });
+    this.activeBacklinksPopup = popup;
+
+    this.findReferencingFiles(cardId).then((matches) => {
+      if (!this.activeBacklinksPopup || this.activeBacklinksPopup !== popup) return;
+      popup.empty();
+
+      if (matches.length === 0) {
+        popup.createDiv({ cls: "ref-card-backlinks-empty", text: "No references found" });
+      } else {
+        for (const path of matches) {
+          const basename = path.replace(/\.md$/, "");
+          const link = popup.createEl("a", {
+            cls: "ref-card-backlinks-link",
+            text: `[[${basename}]]`,
+          });
+          link.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.closeBacklinksPopup();
+            this.app.workspace.openLinkText(path, "", false);
+          });
+        }
+      }
+    });
+
+    const onDocClick = (e: MouseEvent) => {
+      if (!popup.contains(e.target as Node)) {
+        this.closeBacklinksPopup();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        this.closeBacklinksPopup();
+      }
+    };
+    this.activeBacklinksCleanup = () => {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+    setTimeout(() => {
+      document.addEventListener("click", onDocClick);
+      document.addEventListener("keydown", onKey);
+    }, 0);
+  }
+
+  private async findReferencingFiles(cardId: number): Promise<string[]> {
+    const pattern = new RegExp(`\\{${cardId}\\}`);
+    const mdFiles = this.app.vault.getMarkdownFiles();
+    const matches: string[] = [];
+    for (const file of mdFiles) {
+      const content = await this.app.vault.read(file);
+      const stripped = content
+        .replace(/\$\$[\s\S]*?\$\$/g, "")
+        .replace(/\$[^$\n]+?\$/g, "")
+        .replace(/```[\s\S]*?```/g, "")
+        .replace(/`[^`\n]+?`/g, "");
+      if (pattern.test(stripped)) {
+        matches.push(file.path);
+      }
+    }
+    return matches;
+  }
+
+  private closeBacklinksPopup(): void {
+    if (this.activeBacklinksCleanup) {
+      this.activeBacklinksCleanup();
+      this.activeBacklinksCleanup = null;
+    }
+    if (this.activeBacklinksPopup) {
+      this.activeBacklinksPopup.remove();
+      this.activeBacklinksPopup = null;
+    }
+  }
+
+  private replaceRefsOutsideProtected(
+    content: string,
+    replacer: (idStr: string) => string
+  ): string {
+    const protectedRanges: { start: number; end: number }[] = [];
+    const patterns = [
+      /\$\$[\s\S]*?\$\$/g,
+      /\$[^$\n]+?\$/g,
+      /```[\s\S]*?```/g,
+      /`[^`\n]+?`/g,
+    ];
+    for (const pat of patterns) {
+      let m: RegExpExecArray | null;
+      while ((m = pat.exec(content)) !== null) {
+        protectedRanges.push({ start: m.index, end: m.index + m[0].length });
+      }
+    }
+    protectedRanges.sort((a, b) => a.start - b.start);
+
+    const refPat = /\{(\d+)\}/g;
+    let result = "";
+    let lastIdx = 0;
+    let refM: RegExpExecArray | null;
+    while ((refM = refPat.exec(content)) !== null) {
+      const inProtected = protectedRanges.some(
+        (r) => refM!.index >= r.start && refM!.index < r.end
+      );
+      if (inProtected) continue;
+      result += content.slice(lastIdx, refM.index);
+      result += replacer(refM[1]);
+      lastIdx = refM.index + refM[0].length;
+    }
+    result += content.slice(lastIdx);
+    return result;
   }
 
   private renderTextWithLinks(text: string, container: HTMLElement): void {
@@ -496,7 +629,7 @@ export class ReferenceCardView extends ItemView {
         const content = await this.app.vault.read(file);
         if (!/\{\d+\}/.test(content)) continue;
 
-        const newContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+        const newContent = this.replaceRefsOutsideProtected(content, (idStr) => {
           const oldId = parseInt(idStr, 10);
           const newId = idMap.get(oldId);
           return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
@@ -558,7 +691,7 @@ export class ReferenceCardView extends ItemView {
       const file = this.app.vault.getAbstractFileByPath(change.path);
       if (file) {
         const content = await this.app.vault.read(file as any);
-        const restoredContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+        const restoredContent = this.replaceRefsOutsideProtected(content, (idStr) => {
           const curId = parseInt(idStr, 10);
           const origId = reverseMap.get(curId);
           return origId !== undefined ? `{${origId}}` : `{${curId}}`;
@@ -594,7 +727,7 @@ export class ReferenceCardView extends ItemView {
     // Apply the reindex using the idMap
     const editor = mdView.editor;
     const content = editor.getValue();
-    const newContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+    const newContent = this.replaceRefsOutsideProtected(content, (idStr) => {
       const oldId = parseInt(idStr, 10);
       const newId = idMap.get(oldId);
       return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
@@ -671,13 +804,18 @@ export class ReferenceCardView extends ItemView {
 
     const editor = mdView.editor;
     const content = editor.getValue();
-    const refRegex = /\{(\d+)\}/g;
 
-    // Collect ids in order of first appearance
+    // Collect ids in order of first appearance (outside math/code)
     const seen = new Set<number>();
     const orderedIds: number[] = [];
+    const stripped = content
+      .replace(/\$\$[\s\S]*?\$\$/g, "")
+      .replace(/\$[^$\n]+?\$/g, "")
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/`[^`\n]+?`/g, "");
+    const refRegex = /\{(\d+)\}/g;
     let match: RegExpExecArray | null;
-    while ((match = refRegex.exec(content)) !== null) {
+    while ((match = refRegex.exec(stripped)) !== null) {
       const id = parseInt(match[1], 10);
       if (!seen.has(id)) {
         seen.add(id);
@@ -706,7 +844,7 @@ export class ReferenceCardView extends ItemView {
     };
 
     // Update markdown references
-    const newContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+    const newContent = this.replaceRefsOutsideProtected(content, (idStr) => {
       const oldId = parseInt(idStr, 10);
       const newId = idMap.get(oldId);
       return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
@@ -748,7 +886,7 @@ export class ReferenceCardView extends ItemView {
     // Update markdown references back
     const editor = mdView.editor;
     const content = editor.getValue();
-    const newContent = content.replace(/\{(\d+)\}/g, (_m, idStr) => {
+    const newContent = this.replaceRefsOutsideProtected(content, (idStr) => {
       const curId = parseInt(idStr, 10);
       const origId = reverseMap.get(curId);
       return origId !== undefined ? `{${origId}}` : `{${curId}}`;
