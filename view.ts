@@ -67,6 +67,7 @@ export class ReferenceCardView extends ItemView {
     const container = this.containerEl.children[1];
     container.empty();
     container.addClass("ref-cards-container");
+    (container as HTMLElement).style.setProperty("--ref-card-font-size", this.settings.cardFontSize + "px");
 
     this.headerEl = container.createDiv({ cls: "ref-cards-header" });
     this.renderHeader();
@@ -657,6 +658,8 @@ export class ReferenceCardView extends ItemView {
   }
 
   renderAll(): void {
+    const container = this.containerEl.children[1] as HTMLElement;
+    container.style.setProperty("--ref-card-font-size", this.settings.cardFontSize + "px");
     this.renderHeader();
     this.renderCards();
   }
