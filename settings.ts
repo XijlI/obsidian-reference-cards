@@ -4,11 +4,13 @@ import type ReferenceCardsPlugin from "./main";
 export interface ReferenceCardsSettings {
   titleSoftWrap: boolean;
   cardFontSize: number;
+  refIdColor: string;
 }
 
 export const DEFAULT_SETTINGS: ReferenceCardsSettings = {
   titleSoftWrap: true,
   cardFontSize: 13,
+  refIdColor: "",
 };
 
 export class ReferenceCardsSettingTab extends PluginSettingTab {
@@ -48,6 +50,19 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
             this.plugin.settings.cardFontSize = value;
             await this.plugin.saveSettings();
             this.plugin.refreshView();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Reference ID color")
+      .setDesc("Color for {id} highlights in the editor. Leave empty to use the default link color.")
+      .addColorPicker((picker) =>
+        picker
+          .setValue(this.plugin.settings.refIdColor || "#ffffff")
+          .onChange(async (value) => {
+            this.plugin.settings.refIdColor = value;
+            await this.plugin.saveSettings();
+            this.plugin.reconfigureEditors();
           })
       );
   }

@@ -1,4 +1,5 @@
 import { Plugin, WorkspaceLeaf, MarkdownView } from "obsidian";
+import { Compartment } from "@codemirror/state";
 import { PluginData, DEFAULT_DATA } from "./data";
 import { ReferenceCardView, VIEW_TYPE } from "./view";
 import { createEditorPlugin } from "./editor-plugin";
@@ -8,6 +9,7 @@ export default class ReferenceCardsPlugin extends Plugin {
   private data: PluginData;
   private view: ReferenceCardView | null = null;
   private lastMarkdownView: MarkdownView | null = null;
+  private editorCompartment = new Compartment();
   settings: ReferenceCardsSettings;
 
   async onload(): Promise<void> {
@@ -52,8 +54,8 @@ export default class ReferenceCardsPlugin extends Plugin {
           this.view.scrollToCard(id);
         }
       });
-    });
-    this.registerEditorExtension(editorPlugin);
+    }, this.settings.refIdColor || undefined);
+    this.registerEditorExtension(this.editorCompartment.of(editorPlugin));
   }
 
   onunload(): void {
@@ -77,6 +79,26 @@ export default class ReferenceCardsPlugin extends Plugin {
     if (this.view) {
       this.view.renderAll();
     }
+  }
+
+  reconfigureEditors(): void {
+    const newPlugin = createEditorPlugin((id: number) => {
+      this.activateView().then(() => {
+        if (this.view) {
+          this.view.scrollToCard(id);
+        }
+      });
+    }, this.settings.refIdColor || undefined);
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (leaf.view instanceof MarkdownView) {
+        const editor = (leaf.view.editor as any);
+        if (editor?.cm) {
+          editor.cm.dispatch({
+            effects: this.editorCompartment.reconfigure(newPlugin),
+          });
+        }
+      }
+    });
   }
 
   async loadSettings(): Promise<ReferenceCardsSettings> {

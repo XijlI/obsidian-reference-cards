@@ -9,8 +9,12 @@ import { RangeSetBuilder } from "@codemirror/state";
 
 const REF_REGEX = /\{(\d+)\}/g;
 
-function buildDecorations(view: EditorView): DecorationSet {
+function buildDecorations(view: EditorView, color?: string): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
+  const spec: { class: string; attributes?: Record<string, string> } = { class: "ref-card-link" };
+  if (color) {
+    spec.attributes = { style: `color: ${color}` };
+  }
 
   for (const { from, to } of view.visibleRanges) {
     const text = view.state.doc.sliceString(from, to);
@@ -19,14 +23,14 @@ function buildDecorations(view: EditorView): DecorationSet {
     while ((match = REF_REGEX.exec(text)) !== null) {
       const start = from + match.index;
       const end = start + match[0].length;
-      builder.add(start, end, Decoration.mark({ class: "ref-card-link" }));
+      builder.add(start, end, Decoration.mark(spec));
     }
   }
 
   return builder.finish();
 }
 
-export function createEditorPlugin(onNavigate: (id: number) => void) {
+export function createEditorPlugin(onNavigate: (id: number) => void, color?: string) {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
@@ -34,7 +38,7 @@ export function createEditorPlugin(onNavigate: (id: number) => void) {
       editorDom: HTMLElement;
 
       constructor(view: EditorView) {
-        this.decorations = buildDecorations(view);
+        this.decorations = buildDecorations(view, color);
         this.editorDom = view.dom;
         this.clickHandler = (e: MouseEvent) => {
           const el = (e.target as HTMLElement).closest(".ref-card-link") as HTMLElement | null;
@@ -47,7 +51,7 @@ export function createEditorPlugin(onNavigate: (id: number) => void) {
 
       update(update: ViewUpdate) {
         if (update.docChanged || update.viewportChanged) {
-          this.decorations = buildDecorations(update.view);
+          this.decorations = buildDecorations(update.view, color);
         }
       }
 
