@@ -448,7 +448,7 @@
 
 /* Editor link widget */
 .ref-card-link {
-  color: var(--text-accent);
+  color: var(--link-color);
   cursor: pointer;
   font-weight: 600;
   text-decoration: underline;
@@ -457,15 +457,17 @@
 }
 
 .ref-card-link:hover {
-  color: var(--text-accent-hover);
+  color: var(--link-color-hover);
   background: var(--text-highlight-bg);
   border-radius: 2px;
 }
 
 .ref-card-url-link {
+  color: var(--link-external-color);
   text-decoration-style: solid;
 }
 
 .ref-card-wikilink {
+  color: var(--link-color);
   text-decoration-style: dashed;
 }
