@@ -1,20 +1,35 @@
 import { Plugin, WorkspaceLeaf, MarkdownView } from "obsidian";
 import { Compartment } from "@codemirror/state";
-import { PluginData, DEFAULT_DATA } from "./data";
+import { DEFAULT_DATA, normalizeCards, PluginData } from "./data";
 import { ReferenceCardView, VIEW_TYPE } from "./view";
 import { createEditorPlugin } from "./editor-plugin";
 import { ReferenceCardsSettings, DEFAULT_SETTINGS, ReferenceCardsSettingTab } from "./settings";
 
 export default class ReferenceCardsPlugin extends Plugin {
-  private data: PluginData;
+  private data: PluginData = { ...DEFAULT_DATA };
   private view: ReferenceCardView | null = null;
   private lastMarkdownView: MarkdownView | null = null;
   private editorCompartment = new Compartment();
-  settings: ReferenceCardsSettings;
+  settings: ReferenceCardsSettings = { ...DEFAULT_SETTINGS };
 
   async onload(): Promise<void> {
-    this.data = Object.assign({}, DEFAULT_DATA, await this.loadData());
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadSettings());
+    // Cards and settings share data.json; load them from one read so a later
+    // save of either can never resurrect a stale snapshot of the other.
+    const loaded = (await this.loadData()) ?? {};
+
+    this.data = { cards: normalizeCards(loaded.cards) };
+    this.settings = {
+      titleSoftWrap:
+        typeof loaded.titleSoftWrap === "boolean"
+          ? loaded.titleSoftWrap
+          : DEFAULT_SETTINGS.titleSoftWrap,
+      cardFontSize:
+        typeof loaded.cardFontSize === "number"
+          ? loaded.cardFontSize
+          : DEFAULT_SETTINGS.cardFontSize,
+      refIdColor:
+        typeof loaded.refIdColor === "string" ? loaded.refIdColor : DEFAULT_SETTINGS.refIdColor,
+    };
 
     this.addSettingTab(new ReferenceCardsSettingTab(this.app, this));
 
@@ -48,14 +63,7 @@ export default class ReferenceCardsPlugin extends Plugin {
       callback: () => this.activateView(),
     });
 
-    const editorPlugin = createEditorPlugin((id: number) => {
-      this.activateView().then(() => {
-        if (this.view) {
-          this.view.scrollToCard(id);
-        }
-      });
-    }, this.settings.refIdColor || undefined);
-    this.registerEditorExtension(this.editorCompartment.of(editorPlugin));
+    this.registerEditorExtension(this.editorCompartment.of(this.buildEditorPlugin()));
   }
 
   onunload(): void {
@@ -82,13 +90,7 @@ export default class ReferenceCardsPlugin extends Plugin {
   }
 
   reconfigureEditors(): void {
-    const newPlugin = createEditorPlugin((id: number) => {
-      this.activateView().then(() => {
-        if (this.view) {
-          this.view.scrollToCard(id);
-        }
-      });
-    }, this.settings.refIdColor || undefined);
+    const newPlugin = this.buildEditorPlugin();
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.view instanceof MarkdownView) {
         const editor = (leaf.view.editor as any);
@@ -101,15 +103,31 @@ export default class ReferenceCardsPlugin extends Plugin {
     });
   }
 
-  async loadSettings(): Promise<ReferenceCardsSettings> {
-    return Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-  }
-
   async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
+    await this.saveAll();
   }
 
   private async savePluginData(): Promise<void> {
-    await this.saveData(this.data);
+    await this.saveAll();
+  }
+
+  /** Writes the live card list and the live settings together. */
+  private async saveAll(): Promise<void> {
+    await this.saveData({ cards: this.data.cards, ...this.settings });
+  }
+
+  /**
+   * Reads the current colour at decoration-build time rather than capturing it
+   * once, so editors opened after a colour change use the new value too.
+   */
+  private buildEditorPlugin() {
+    return createEditorPlugin(
+      (id: string) => {
+        this.activateView().then(() => {
+          this.view?.scrollToCard(id);
+        });
+      },
+      () => this.settings.refIdColor || undefined
+    );
   }
 }

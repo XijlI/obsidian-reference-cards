@@ -195,7 +195,7 @@
    a top row and let the title use the full card width underneath them. */
 .ref-card-top.ref-card-top-multiline {
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .ref-card-top.ref-card-top-multiline .ref-card-id {

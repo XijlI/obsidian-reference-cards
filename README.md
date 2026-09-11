@@ -9,16 +9,18 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 ## Features
 
 - Create and manage reference cards in a side panel
+- Each card gets a unique, randomly generated 3-character ID (letters + digits, e.g. `{a1b}`)
 - Insert `{id}` markers into notes to link cards
 - Click `{id}` in Live Preview to jump to the card
 - Cards support title, tags, year, and notes fields
 - Clickable links in title and notes (URLs, wiki links, markdown links)
 - Filter cards by tag
 - Sort by index, title, or year
-- Reindex cards based on `{id}` order in the current note
-- Undo/Redo for reindex and delete operations
-- Delete cards with automatic reindexing across all vault files
+- Reorder cards based on `{id}` order in the current note (IDs and notes are left untouched)
+- Undo/Redo for reorder and delete operations
+- Delete cards without touching your notes — IDs are stable and never reused
 - Show which vault files reference a card via the **?** button
+- Math and code blocks are ignored, so LaTeX like `\frac{1}{N}` inside `$…$` is never mistaken for a reference
 - Configurable card font size (10–20px)
 
 ## Usage
@@ -28,9 +30,9 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 3. Place cursor in a note, click **+** on a card to insert `{id}`
 4. Click `{id}` in Live Preview to jump to that card
 5. Use the sort dropdown and arrow button to change card order
-6. Use the toolbar buttons for reindex, undo, and redo
+6. Use the toolbar buttons to reorder cards by the current note's `{id}` order, and to undo/redo
 7. Double-click title or notes to edit
-8. Delete a card with **×** — vault references are reindexed automatically
+8. Delete a card with **×** — notes are not modified and remaining IDs are unchanged
 9. Click **?** on a card to see which files reference it
 
 ## Installation

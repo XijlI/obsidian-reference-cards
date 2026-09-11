@@ -55,7 +55,7 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Reference ID color")
-      .setDesc("Color for {id} highlights in the editor. Leave empty to use the default link color.")
+      .setDesc("Color for {id} highlights in the editor. Use reset to fall back to the default link color.")
       .addColorPicker((picker) =>
         picker
           .setValue(this.plugin.settings.refIdColor || "#ffffff")
@@ -63,6 +63,17 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
             this.plugin.settings.refIdColor = value;
             await this.plugin.saveSettings();
             this.plugin.reconfigureEditors();
+          })
+      )
+      .addExtraButton((button) =>
+        button
+          .setIcon("rotate-ccw")
+          .setTooltip("Reset to default link color")
+          .onClick(async () => {
+            this.plugin.settings.refIdColor = "";
+            await this.plugin.saveSettings();
+            this.plugin.reconfigureEditors();
+            this.display();
           })
       );
   }

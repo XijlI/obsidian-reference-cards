@@ -1,22 +1,13 @@
-import { ItemView, WorkspaceLeaf, App, MarkdownView, MarkdownRenderer, Notice, setIcon } from "obsidian";
-import { ReferenceCard, PluginData, createEmptyCard, getAllTags } from "./data";
+import { ItemView, WorkspaceLeaf, App, MarkdownView, Notice, setIcon } from "obsidian";
+import { ReferenceCard, PluginData, createEmptyCard, getAllTags, orderCards } from "./data";
 import { ReferenceCardsSettings } from "./settings";
+import { collectRefIds, escapeRegExp, generateCardId, maskProtectedRegions } from "./refs";
 
 export const VIEW_TYPE = "reference-cards-view";
-
-interface ReindexSnapshot {
-  cards: ReferenceCard[];
-  nextId: number;
-  idMap: Map<number, number>; // old_id -> new_id
-}
 
 interface DeleteSnapshot {
   deletedCard: ReferenceCard;
   deletedIndex: number;
-  oldCards: ReferenceCard[];
-  oldNextId: number;
-  idMap: Map<number, number>;
-  fileChanges: { path: string; originalContent: string }[];
 }
 
 export class ReferenceCardView extends ItemView {
@@ -30,10 +21,10 @@ export class ReferenceCardView extends ItemView {
   private sortAscending: boolean = true;
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
-  private reindexSnapshot: ReindexSnapshot | null = null;
-  private reindexRedoSnapshot: ReindexSnapshot | null = null;
+  private reorderSnapshot: string[] | null = null;
+  private reorderRedoSnapshot: string[] | null = null;
   private deleteSnapshot: DeleteSnapshot | null = null;
-  private deleteRedoSnapshot: { cardId: number } | null = null;
+  private deleteRedoSnapshot: { cardId: string } | null = null;
   private activeBacklinksPopup: HTMLElement | null = null;
   private activeBacklinksCleanup: (() => void) | null = null;
   private titleLayoutObserver: ResizeObserver | null = null;
@@ -104,6 +95,13 @@ export class ReferenceCardView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.closeBacklinksPopup();
+    // Flush any pending debounced edit instead of dropping up to 500ms of work.
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+      await this.saveData();
+    }
     this.titleLayoutObserver?.disconnect();
     this.titleLayoutObserver = null;
   }
@@ -153,26 +151,26 @@ export class ReferenceCardView extends ItemView {
       this.renderCards();
     });
 
-    const reindexBtn = sortRow.createEl("button", {
+    const reorderBtn = sortRow.createEl("button", {
       cls: "ref-cards-sort-btn ref-cards-sort-btn-icon",
     });
-    setIcon(reindexBtn, "refresh-cw");
-    reindexBtn.title = "Reindex cards by order in current file";
-    reindexBtn.addEventListener("click", () => this.reindex());
+    setIcon(reorderBtn, "arrow-up-down");
+    reorderBtn.title = "Reorder cards by {id} order in current file";
+    reorderBtn.addEventListener("click", () => this.reorder());
 
     const undoBtn = sortRow.createEl("button", {
-      cls: "ref-cards-sort-btn ref-cards-sort-btn-icon" + (!this.reindexSnapshot && !this.reindexRedoSnapshot ? " ref-cards-sort-btn-disabled" : ""),
+      cls: "ref-cards-sort-btn ref-cards-sort-btn-icon" + (!this.reorderSnapshot && !this.reorderRedoSnapshot ? " ref-cards-sort-btn-disabled" : ""),
     });
-    if (this.reindexRedoSnapshot) {
+    if (this.reorderRedoSnapshot) {
       setIcon(undoBtn, "redo-2");
-      undoBtn.title = "Redo last reindex";
+      undoBtn.title = "Redo reorder";
       undoBtn.disabled = false;
-      undoBtn.addEventListener("click", () => this.redoReindex());
+      undoBtn.addEventListener("click", () => this.redoReorder());
     } else {
       setIcon(undoBtn, "undo-2");
-      undoBtn.title = "Undo last reindex";
-      undoBtn.disabled = !this.reindexSnapshot;
-      undoBtn.addEventListener("click", () => this.undoReindex());
+      undoBtn.title = "Undo reorder";
+      undoBtn.disabled = !this.reorderSnapshot;
+      undoBtn.addEventListener("click", () => this.undoReorder());
     }
 
     const undoDeleteBtn = sortRow.createEl("button", {
@@ -194,9 +192,11 @@ export class ReferenceCardView extends ItemView {
   private renderCards(): void {
     this.cardContainer.empty();
 
+    // Copy before filtering/sorting: `this.data.cards` is the persisted order
+    // and must not be reordered as a side effect of the sort control.
     let filtered = this.filterTag
       ? this.data.cards.filter((c) => c.tags.includes(this.filterTag))
-      : this.data.cards;
+      : [...this.data.cards];
 
     if (this.searchQuery) {
       filtered = filtered.filter((c) => {
@@ -208,7 +208,7 @@ export class ReferenceCardView extends ItemView {
     filtered.sort((a, b) => {
       let cmp = 0;
       if (this.sortField === "index") {
-        cmp = a.id - b.id;
+        cmp = a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" });
       } else if (this.sortField === "title") {
         cmp = a.title.localeCompare(b.title);
       } else if (this.sortField === "year") {
@@ -231,7 +231,7 @@ export class ReferenceCardView extends ItemView {
 
     const topRow = cardEl.createDiv({ cls: "ref-card-top" });
 
-    const idBadge = topRow.createSpan({ cls: "ref-card-id", text: `[${card.id}]` });
+    topRow.createSpan({ cls: "ref-card-id", text: `[${card.id}]` });
 
     const titleContainer = topRow.createDiv({
       cls: "ref-card-title-container" + (this.settings.titleSoftWrap ? " ref-card-title-softwrap" : ""),
@@ -428,9 +428,9 @@ export class ReferenceCardView extends ItemView {
     textarea.style.height = textarea.scrollHeight + "px";
   }
 
-  private toggleBacklinksPopup(cardId: number, cardEl: HTMLElement, btnEl: HTMLElement): void {
+  private toggleBacklinksPopup(cardId: string, cardEl: HTMLElement, btnEl: HTMLElement): void {
     if (this.activeBacklinksPopup) {
-      const wasSame = this.activeBacklinksPopup.dataset.cardId === String(cardId);
+      const wasSame = this.activeBacklinksPopup.dataset.cardId === cardId;
       this.closeBacklinksPopup();
       if (wasSame) return;
     }
@@ -440,11 +440,11 @@ export class ReferenceCardView extends ItemView {
     const cardRect = cardEl.getBoundingClientRect();
     popup.style.top = (btnRect.bottom - cardRect.top + 4) + "px";
     popup.style.left = "0";
-    popup.dataset.cardId = String(cardId);
+    popup.dataset.cardId = cardId;
     popup.createDiv({ cls: "ref-card-backlinks-loading", text: "Searching..." });
     this.activeBacklinksPopup = popup;
 
-    this.findReferencingFiles(cardId).then((matches) => {
+    this.findReferencingFiles(cardId, () => this.activeBacklinksPopup !== popup).then((matches) => {
       if (!this.activeBacklinksPopup || this.activeBacklinksPopup !== popup) return;
       popup.empty();
 
@@ -487,18 +487,19 @@ export class ReferenceCardView extends ItemView {
     }, 0);
   }
 
-  private async findReferencingFiles(cardId: number): Promise<string[]> {
-    const pattern = new RegExp(`\\{${cardId}\\}`);
+  private async findReferencingFiles(
+    cardId: string,
+    isCancelled: () => boolean = () => false
+  ): Promise<string[]> {
+    const pattern = new RegExp(`\\{${escapeRegExp(cardId)}\\}`);
     const mdFiles = this.app.vault.getMarkdownFiles();
     const matches: string[] = [];
     for (const file of mdFiles) {
-      const content = await this.app.vault.read(file);
-      const stripped = content
-        .replace(/\$\$[\s\S]*?\$\$/g, "")
-        .replace(/\$[^$\n]+?\$/g, "")
-        .replace(/```[\s\S]*?```/g, "")
-        .replace(/`[^`\n]+?`/g, "");
-      if (pattern.test(stripped)) {
+      if (isCancelled()) return matches;
+      // cachedRead avoids disk IO per file; maskProtectedRegions blanks out
+      // math/code so `{1}` inside LaTeX or a code block is not counted.
+      const content = await this.app.vault.cachedRead(file);
+      if (pattern.test(maskProtectedRegions(content))) {
         matches.push(file.path);
       }
     }
@@ -514,42 +515,6 @@ export class ReferenceCardView extends ItemView {
       this.activeBacklinksPopup.remove();
       this.activeBacklinksPopup = null;
     }
-  }
-
-  private replaceRefsOutsideProtected(
-    content: string,
-    replacer: (idStr: string) => string
-  ): string {
-    const protectedRanges: { start: number; end: number }[] = [];
-    const patterns = [
-      /\$\$[\s\S]*?\$\$/g,
-      /\$[^$\n]+?\$/g,
-      /```[\s\S]*?```/g,
-      /`[^`\n]+?`/g,
-    ];
-    for (const pat of patterns) {
-      let m: RegExpExecArray | null;
-      while ((m = pat.exec(content)) !== null) {
-        protectedRanges.push({ start: m.index, end: m.index + m[0].length });
-      }
-    }
-    protectedRanges.sort((a, b) => a.start - b.start);
-
-    const refPat = /\{(\d+)\}/g;
-    let result = "";
-    let lastIdx = 0;
-    let refM: RegExpExecArray | null;
-    while ((refM = refPat.exec(content)) !== null) {
-      const inProtected = protectedRanges.some(
-        (r) => refM!.index >= r.start && refM!.index < r.end
-      );
-      if (inProtected) continue;
-      result += content.slice(lastIdx, refM.index);
-      result += replacer(refM[1]);
-      lastIdx = refM.index + refM[0].length;
-    }
-    result += content.slice(lastIdx);
-    return result;
   }
 
   private renderTextWithLinks(text: string, container: HTMLElement): void {
@@ -625,15 +590,21 @@ export class ReferenceCardView extends ItemView {
       if (part.type === 'text') {
         container.createSpan({ text: part.text });
       } else if (part.type === 'url' || part.type === 'mdlink') {
+        const href = part.url ?? "";
+        // Only open real web links; ignore javascript:/file: etc.
+        if (!/^https?:\/\//i.test(href)) {
+          container.createSpan({ text: part.text });
+          continue;
+        }
         const link = container.createEl('a', {
           cls: 'ref-card-link ref-card-url-link',
           text: part.text,
-          href: part.url,
+          href,
         });
         link.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          window.open(part.url, '_blank');
+          window.open(href, '_blank');
         });
       } else if (part.type === 'wikilink') {
         const link = container.createEl('a', {
@@ -643,7 +614,9 @@ export class ReferenceCardView extends ItemView {
         link.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const file = this.app.metadataCache.getFirstLinkpathDest(part.url!, '');
+          // Strip the display-text alias: [[link|alias]] -> link
+          const target = part.url!.split("|")[0].trim();
+          const file = this.app.metadataCache.getFirstLinkpathDest(target, '');
           if (file) {
             this.app.workspace.openLinkText(file.path, '', false);
           }
@@ -661,72 +634,40 @@ export class ReferenceCardView extends ItemView {
   }
 
   async addCard(): Promise<void> {
-    const card = createEmptyCard(this.data.nextId++);
+    const existing = new Set(this.data.cards.map((c) => c.id));
+    const card = createEmptyCard(generateCardId(existing));
     this.data.cards.push(card);
     await this.saveData();
     this.renderCards();
     this.renderHeader();
 
-    const cardEl = this.cardContainer.querySelector(`[data-card-id="${card.id}"]`);
+    const cardEl = this.cardContainer.querySelector<HTMLElement>(
+      `[data-card-id="${CSS.escape(card.id)}"]`
+    );
     if (cardEl) {
       cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
-      const titleInput = cardEl.querySelector(".ref-card-title-input") as HTMLElement;
-      if (titleInput) titleInput.focus();
+      // Enter edit mode on the fresh card (showTitleEdit is bound to dblclick).
+      cardEl
+        .querySelector<HTMLElement>(".ref-card-title-view")
+        ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     }
   }
 
-  async deleteCard(id: number): Promise<void> {
+  async deleteCard(id: string): Promise<void> {
     this.deleteRedoSnapshot = null;
     const deletedIndex = this.data.cards.findIndex((c) => c.id === id);
     if (deletedIndex === -1) return;
 
-    const deletedCard = { ...this.data.cards[deletedIndex], tags: [...this.data.cards[deletedIndex].tags] };
-    const oldCards = this.data.cards.map((c) => ({ ...c, tags: [...c.tags] }));
-    const oldNextId = this.data.nextId;
-
-    this.data.cards.splice(deletedIndex, 1);
-
-    // Build old_id -> new_id map for continuous indexing
-    const idMap = new Map<number, number>();
-    this.data.cards.forEach((card, index) => {
-      const newId = index + 1;
-      if (card.id !== newId) {
-        idMap.set(card.id, newId);
-        card.id = newId;
-      }
-    });
-    this.data.nextId = this.data.cards.length + 1;
-
-    // Update markdown references in all vault files
-    const fileChanges: { path: string; originalContent: string }[] = [];
-    if (idMap.size > 0) {
-      const mdFiles = this.app.vault.getMarkdownFiles();
-      for (const file of mdFiles) {
-        const content = await this.app.vault.read(file);
-        if (!/\{\d+\}/.test(content)) continue;
-
-        const newContent = this.replaceRefsOutsideProtected(content, (idStr) => {
-          const oldId = parseInt(idStr, 10);
-          const newId = idMap.get(oldId);
-          return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
-        });
-
-        if (newContent !== content) {
-          fileChanges.push({ path: file.path, originalContent: content });
-          await this.app.vault.modify(file, newContent);
-        }
-      }
-    }
-
-    // Save snapshot for undo
-    this.deleteSnapshot = {
-      deletedCard,
-      deletedIndex,
-      oldCards,
-      oldNextId,
-      idMap,
-      fileChanges,
+    const deletedCard = {
+      ...this.data.cards[deletedIndex],
+      tags: [...this.data.cards[deletedIndex].tags],
     };
+
+    // IDs are stable: deleting never renumbers the remaining cards and never
+    // rewrites notes. Any `{id}` markers for this card are simply left alone —
+    // the ID is never reused, so they can never point at a different card.
+    this.deleteSnapshot = { deletedCard, deletedIndex };
+    this.data.cards.splice(deletedIndex, 1);
 
     await this.saveData();
     this.renderCards();
@@ -747,35 +688,11 @@ export class ReferenceCardView extends ItemView {
   async undoDelete(): Promise<void> {
     if (!this.deleteSnapshot) return;
 
-    const { deletedCard, deletedIndex, oldCards, oldNextId, idMap, fileChanges } = this.deleteSnapshot;
-
-    // Save redo snapshot with the card id to re-delete
+    const { deletedCard, deletedIndex } = this.deleteSnapshot;
     this.deleteRedoSnapshot = { cardId: deletedCard.id };
 
-    // Restore card data
-    this.data.cards = oldCards;
-    this.data.nextId = oldNextId;
-
-    // Build reverse map: new_id -> old_id
-    const reverseMap = new Map<number, number>();
-    for (const [oldId, newId] of idMap) {
-      reverseMap.set(newId, oldId);
-    }
-
-    // Restore file contents
-    for (const change of fileChanges) {
-      const file = this.app.vault.getAbstractFileByPath(change.path);
-      if (file) {
-        const content = await this.app.vault.read(file as any);
-        const restoredContent = this.replaceRefsOutsideProtected(content, (idStr) => {
-          const curId = parseInt(idStr, 10);
-          const origId = reverseMap.get(curId);
-          return origId !== undefined ? `{${origId}}` : `{${curId}}`;
-        });
-        await this.app.vault.modify(file as any, restoredContent);
-      }
-    }
-
+    const index = Math.min(deletedIndex, this.data.cards.length);
+    this.data.cards.splice(index, 0, deletedCard);
     this.deleteSnapshot = null;
 
     await this.saveData();
@@ -785,35 +702,12 @@ export class ReferenceCardView extends ItemView {
     new Notice("Delete undone.", 3000);
   }
 
-  async redoReindex(): Promise<void> {
-    if (!this.reindexRedoSnapshot) return;
+  async redoReorder(): Promise<void> {
+    if (!this.reorderRedoSnapshot) return;
 
-    const mdView = this.getLastMarkdownView();
-    if (!mdView) return;
-
-    const { cards, nextId, idMap } = this.reindexRedoSnapshot;
-
-    // Save undo snapshot with current state (before redo)
-    this.reindexSnapshot = {
-      cards: this.data.cards.map((c) => ({ ...c, tags: [...c.tags] })),
-      nextId: this.data.nextId,
-      idMap,
-    };
-
-    // Apply the reindex using the idMap
-    const editor = mdView.editor;
-    const content = editor.getValue();
-    const newContent = this.replaceRefsOutsideProtected(content, (idStr) => {
-      const oldId = parseInt(idStr, 10);
-      const newId = idMap.get(oldId);
-      return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
-    });
-    editor.setValue(newContent);
-
-    // Restore reindexed card data
-    this.data.cards = cards;
-    this.data.nextId = nextId;
-    this.reindexRedoSnapshot = null;
+    this.reorderSnapshot = this.data.cards.map((c) => c.id);
+    this.applyCardOrder(this.reorderRedoSnapshot);
+    this.reorderRedoSnapshot = null;
 
     await this.saveData();
     this.renderAll();
@@ -827,26 +721,40 @@ export class ReferenceCardView extends ItemView {
     await this.deleteCard(cardId);
   }
 
-  insertReference(id: number): void {
+  insertReference(id: string): void {
     const mdView = this.getLastMarkdownView();
     if (!mdView) return;
     const editor = mdView.editor;
     const cursor = editor.getCursor();
     editor.replaceRange(`{${id}}`, cursor);
-    editor.setCursor({ line: cursor.line, ch: cursor.ch + String(id).length + 2 });
+    editor.setCursor({ line: cursor.line, ch: cursor.ch + id.length + 2 });
   }
 
-  scrollToCard(id: number): void {
-    // If card is filtered out, clear filter and re-render
+  scrollToCard(id: string): void {
     const card = this.data.cards.find((c) => c.id === id);
     if (!card) return;
+
+    // If the card is hidden by the tag filter or search, clear both so the
+    // scroll target actually exists.
+    let needsRender = false;
     if (this.filterTag && !card.tags.includes(this.filterTag)) {
       this.filterTag = "";
+      needsRender = true;
+    }
+    if (this.searchQuery) {
+      this.searchQuery = "";
+      const searchInput = this.contentEl.querySelector<HTMLInputElement>(".ref-cards-search-input");
+      if (searchInput) searchInput.value = "";
+      needsRender = true;
+    }
+    if (needsRender) {
       this.renderCards();
       this.renderHeader();
     }
 
-    const cardEl = this.cardContainer.querySelector(`[data-card-id="${id}"]`);
+    const cardEl = this.cardContainer.querySelector<HTMLElement>(
+      `[data-card-id="${CSS.escape(id)}"]`
+    );
     if (!cardEl) return;
 
     // Scroll into view
@@ -855,15 +763,11 @@ export class ReferenceCardView extends ItemView {
     // Highlight with pulse effect
     cardEl.removeClass("ref-card-highlight");
     // Force reflow so re-adding the class restarts the animation
-    void (cardEl as HTMLElement).offsetWidth;
+    void cardEl.offsetWidth;
     cardEl.addClass("ref-card-highlight");
     setTimeout(() => {
       cardEl.removeClass("ref-card-highlight");
     }, 2000);
-  }
-
-  updateData(data: PluginData): void {
-    this.data = data;
   }
 
   renderAll(): void {
@@ -873,108 +777,48 @@ export class ReferenceCardView extends ItemView {
     this.renderCards();
   }
 
-  async reindex(): Promise<void> {
-    this.reindexRedoSnapshot = null;
+  /**
+   * "Reorder": rearranges the card list to match the order the {id} markers
+   * first appear in the active note. IDs and note text are never changed;
+   * cards not mentioned keep their relative order at the end.
+   */
+  async reorder(): Promise<void> {
     const mdView = this.getLastMarkdownView();
-    if (!mdView) return;
-
-    const editor = mdView.editor;
-    const content = editor.getValue();
-
-    // Collect ids in order of first appearance (outside math/code)
-    const seen = new Set<number>();
-    const orderedIds: number[] = [];
-    const stripped = content
-      .replace(/\$\$[\s\S]*?\$\$/g, "")
-      .replace(/\$[^$\n]+?\$/g, "")
-      .replace(/```[\s\S]*?```/g, "")
-      .replace(/`[^`\n]+?`/g, "");
-    const refRegex = /\{(\d+)\}/g;
-    let match: RegExpExecArray | null;
-    while ((match = refRegex.exec(stripped)) !== null) {
-      const id = parseInt(match[1], 10);
-      if (!seen.has(id)) {
-        seen.add(id);
-        orderedIds.push(id);
-      }
+    if (!mdView) {
+      new Notice("Open a note to reorder cards by its {id} order.", 3000);
+      return;
     }
 
-    // Append cards not mentioned, in their current order
+    const order = collectRefIds(mdView.editor.getValue());
+    const seen = new Set(order);
     for (const card of this.data.cards) {
       if (!seen.has(card.id)) {
-        orderedIds.push(card.id);
+        seen.add(card.id);
+        order.push(card.id);
       }
     }
 
-    // Build old_id -> new_id map
-    const idMap = new Map<number, number>();
-    for (let i = 0; i < orderedIds.length; i++) {
-      idMap.set(orderedIds[i], i + 1);
-    }
-
-    // Save snapshot for undo
-    this.reindexSnapshot = {
-      cards: this.data.cards.map((c) => ({ ...c, tags: [...c.tags] })),
-      nextId: this.data.nextId,
-      idMap,
-    };
-
-    // Update markdown references
-    const newContent = this.replaceRefsOutsideProtected(content, (idStr) => {
-      const oldId = parseInt(idStr, 10);
-      const newId = idMap.get(oldId);
-      return newId !== undefined ? `{${newId}}` : `{${oldId}}`;
-    });
-    editor.setValue(newContent);
-
-    // Update card ids
-    for (const card of this.data.cards) {
-      const newId = idMap.get(card.id);
-      if (newId !== undefined) {
-        card.id = newId;
-      }
-    }
-    this.data.nextId = orderedIds.length + 1;
+    this.reorderSnapshot = this.data.cards.map((c) => c.id);
+    this.reorderRedoSnapshot = null;
+    this.applyCardOrder(order);
 
     await this.saveData();
     this.renderAll();
   }
 
-  async undoReindex(): Promise<void> {
-    if (!this.reindexSnapshot) return;
+  async undoReorder(): Promise<void> {
+    if (!this.reorderSnapshot) return;
 
-    const mdView = this.getLastMarkdownView();
-    if (!mdView) return;
-
-    // Save redo snapshot with current state (after reindex) and the idMap
-    this.reindexRedoSnapshot = {
-      cards: this.data.cards.map((c) => ({ ...c, tags: [...c.tags] })),
-      nextId: this.data.nextId,
-      idMap: this.reindexSnapshot.idMap,
-    };
-
-    // Build reverse map: new_id -> old_id
-    const reverseMap = new Map<number, number>();
-    for (const [oldId, newId] of this.reindexSnapshot.idMap) {
-      reverseMap.set(newId, oldId);
-    }
-
-    // Update markdown references back
-    const editor = mdView.editor;
-    const content = editor.getValue();
-    const newContent = this.replaceRefsOutsideProtected(content, (idStr) => {
-      const curId = parseInt(idStr, 10);
-      const origId = reverseMap.get(curId);
-      return origId !== undefined ? `{${origId}}` : `{${curId}}`;
-    });
-    editor.setValue(newContent);
-
-    // Restore card data
-    this.data.cards = this.reindexSnapshot.cards;
-    this.data.nextId = this.reindexSnapshot.nextId;
-    this.reindexSnapshot = null;
+    this.reorderRedoSnapshot = this.data.cards.map((c) => c.id);
+    this.applyCardOrder(this.reorderSnapshot);
+    this.reorderSnapshot = null;
 
     await this.saveData();
     this.renderAll();
+  }
+
+  /** Reorders `this.data.cards` to match `order`; unknown ids are ignored. */
+  private applyCardOrder(order: string[]): void {
+    this.data.cards = orderCards(this.data.cards, order);
   }
 }
