@@ -6,6 +6,13 @@
   gap: 8px;
 }
 
+/* Obsidian's global `.workspace-leaf-content .view-content` rule (specificity
+   0,2,0) adds a large 32px bottom padding, which beats `.ref-cards-container`
+   (0,1,0) and leaves a big gap below the card list. Override just the bottom. */
+.workspace-leaf-content .view-content.ref-cards-container {
+  padding-bottom: 8px;
+}
+
 .ref-cards-header {
   display: flex;
   flex-direction: column;
