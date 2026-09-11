@@ -36,6 +36,8 @@ export class ReferenceCardView extends ItemView {
   private deleteRedoSnapshot: { cardId: number } | null = null;
   private activeBacklinksPopup: HTMLElement | null = null;
   private activeBacklinksCleanup: (() => void) | null = null;
+  private titleLayoutObserver: ResizeObserver | null = null;
+  private lastTitleLayoutWidth = -1;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -87,10 +89,23 @@ export class ReferenceCardView extends ItemView {
 
     this.cardContainer = container.createDiv({ cls: "ref-cards-list" });
     this.renderCards();
+
+    // Re-evaluate title wrapping whenever the panel is resized (line count depends on width).
+    // Observe the view content rather than the scrollable list: the list's own
+    // scrollbar can appear/disappear as card heights change, which would feed
+    // width changes back into this observer and could oscillate.
+    this.titleLayoutObserver = new ResizeObserver((entries) => {
+      const width = entries[entries.length - 1]?.contentRect.width ?? 0;
+      if (Math.abs(width - this.lastTitleLayoutWidth) < 0.5) return;
+      this.lastTitleLayoutWidth = width;
+      this.refreshAllTitleWrapLayouts();
+    });
+    this.titleLayoutObserver.observe(this.contentEl);
   }
 
   async onClose(): Promise<void> {
-    // cleanup
+    this.titleLayoutObserver?.disconnect();
+    this.titleLayoutObserver = null;
   }
 
   private renderHeader(): void {
@@ -207,6 +222,8 @@ export class ReferenceCardView extends ItemView {
     for (const card of filtered) {
       this.renderCard(card);
     }
+
+    this.refreshAllTitleWrapLayouts();
   }
 
   private renderCard(card: ReferenceCard): void {
@@ -238,6 +255,7 @@ export class ReferenceCardView extends ItemView {
       titleView.style.display = "none";
       titleInput.style.display = "block";
       titleInput.focus();
+      this.refreshTitleWrapLayout(topRow);
     };
 
     const hideTitleEdit = () => {
@@ -245,6 +263,7 @@ export class ReferenceCardView extends ItemView {
       titleInput.style.display = "none";
       titleView.empty();
       this.renderTextWithLinks(card.title, titleView);
+      this.refreshTitleWrapLayout(topRow);
     };
 
     titleView.addEventListener("dblclick", showTitleEdit);
@@ -256,6 +275,7 @@ export class ReferenceCardView extends ItemView {
     });
     titleInput.addEventListener("input", () => {
       card.title = titleInput.textContent || "";
+      this.refreshTitleWrapLayout(topRow);
       this.debouncedSave();
     });
 
@@ -345,6 +365,62 @@ export class ReferenceCardView extends ItemView {
       this.resizeTextarea(notesArea);
       this.debouncedSave();
     });
+  }
+
+  /**
+   * Soft-wrapped titles that span more than two lines are hard to read in a
+   * narrow panel: the `[id]` badge and the action buttons get vertically
+   * centered next to a tall block of text. For those cards, move `[id]` and the
+   * buttons to a top row and let the title use the full card width underneath.
+   */
+  private refreshAllTitleWrapLayouts(): void {
+    const topRows = Array.from(this.cardContainer.querySelectorAll<HTMLElement>(".ref-card-top"));
+
+    // Always measure in the default inline layout. Measuring a full-width
+    // multiline title would report fewer lines and make the class flip back and
+    // forth (3 lines inline -> 2 lines full width -> 3 lines inline -> ...).
+    for (const topRow of topRows) {
+      topRow.removeClass("ref-card-top-multiline");
+    }
+
+    if (!this.settings.titleSoftWrap) return;
+
+    for (const topRow of topRows) {
+      this.applyTitleWrapLayout(topRow);
+    }
+  }
+
+  private refreshTitleWrapLayout(topRow: HTMLElement): void {
+    topRow.removeClass("ref-card-top-multiline");
+    if (this.settings.titleSoftWrap) {
+      this.applyTitleWrapLayout(topRow);
+    }
+  }
+
+  private applyTitleWrapLayout(topRow: HTMLElement): void {
+    const titleView = topRow.querySelector<HTMLElement>(".ref-card-title-view");
+    const titleInput = topRow.querySelector<HTMLElement>(".ref-card-title-edit");
+    const visibleTitle = titleInput && titleInput.style.display !== "none" ? titleInput : titleView;
+    if (!visibleTitle) return;
+    if (this.countTitleLines(visibleTitle) > 2) {
+      topRow.addClass("ref-card-top-multiline");
+    }
+  }
+
+  private countTitleLines(el: HTMLElement): number {
+    const style = window.getComputedStyle(el);
+    let lineHeight = parseFloat(style.lineHeight);
+    if (!lineHeight || Number.isNaN(lineHeight)) {
+      lineHeight = (parseFloat(style.fontSize) || 13) * 1.4;
+    }
+    if (lineHeight <= 0) return 1;
+
+    const rect = el.getBoundingClientRect();
+    const paddingY = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    const borderY = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+    const contentHeight = rect.height - paddingY - borderY;
+    if (contentHeight <= 0) return 1;
+    return Math.max(1, Math.round(contentHeight / lineHeight));
   }
 
   private resizeTextarea(textarea: HTMLTextAreaElement): void {

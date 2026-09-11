@@ -51,7 +51,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 
 | Setting | Description |
 |---------|-------------|
-| Title soft wrap | Allow long titles to wrap across multiple lines (default: on) |
+| Title soft wrap | Allow long titles to wrap across multiple lines (default: on). Titles longer than two lines switch to a compact layout: the `[id]` and action buttons move to the top row and the title gets the full card width below them |
 | Card font size | Adjust the font size of card content, 10–20px (default: 13) |
 | Reference ID color | Color for `{id}` highlights in the editor (default: link color) |
 

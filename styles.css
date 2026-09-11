@@ -191,6 +191,23 @@
   gap: 6px;
 }
 
+/* Soft-wrapped title longer than two lines: keep [id] and the action buttons on
+   a top row and let the title use the full card width underneath them. */
+.ref-card-top.ref-card-top-multiline {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.ref-card-top.ref-card-top-multiline .ref-card-id {
+  flex: 1;
+}
+
+.ref-card-top.ref-card-top-multiline .ref-card-title-container {
+  order: 1;
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
 .ref-card-id {
   font-weight: 600;
   font-size: var(--ref-card-font-size, 13px);
