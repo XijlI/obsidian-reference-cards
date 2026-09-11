@@ -6,6 +6,8 @@ export interface ReferenceCard {
   tags: string[];
   year: string;
   notes: string;
+  /** Epoch ms when the card was created (used by the "Added" sort). */
+  createdAt: number;
 }
 
 export interface PluginData {
@@ -23,6 +25,7 @@ export function createEmptyCard(id: string): ReferenceCard {
     tags: [],
     year: "",
     notes: "",
+    createdAt: Date.now(),
   };
 }
 
@@ -58,14 +61,18 @@ export function orderCards(cards: ReferenceCard[], order: string[]): ReferenceCa
 
 /**
  * Coerces whatever is in data.json into well-formed cards: string IDs, unique
- * IDs, string fields. Legacy numeric IDs (1-3 digits) are preserved so existing
- * `{1}`-style references keep working; anything unusable gets a fresh random ID.
+ * IDs, string fields, and a creation timestamp. Legacy numeric IDs (1-3 digits)
+ * are preserved so existing `{1}`-style references keep working; anything
+ * unusable gets a fresh random ID. Cards saved before timestamps existed get a
+ * fallback based on their order in the file, which keeps their current
+ * oldest-first order and sorts them before any newly created card.
  */
 export function normalizeCards(raw: unknown): ReferenceCard[] {
   if (!Array.isArray(raw)) return [];
 
   const cards: ReferenceCard[] = [];
   const used = new Set<string>();
+  let fallbackCreatedAt = 0;
 
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
@@ -76,6 +83,11 @@ export function normalizeCards(raw: unknown): ReferenceCard[] {
       id = generateCardId(used);
     }
     used.add(id);
+
+    const createdAt =
+      typeof source.createdAt === "number" && Number.isFinite(source.createdAt)
+        ? source.createdAt
+        : fallbackCreatedAt++;
 
     cards.push({
       id,
@@ -90,6 +102,7 @@ export function normalizeCards(raw: unknown): ReferenceCard[] {
             ? String(source.year)
             : "",
       notes: typeof source.notes === "string" ? source.notes : "",
+      createdAt,
     });
   }
 

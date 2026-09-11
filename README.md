@@ -9,13 +9,14 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 ## Features
 
 - Create and manage reference cards in a side panel
+- New cards animate into place from the **+** button (respects reduced-motion)
 - Each card gets a unique, randomly generated 3-character ID (letters + digits, e.g. `{a1b}`)
 - Insert `{id}` markers into notes to link cards
 - Click `{id}` in Live Preview to jump to the card
 - Cards support title, tags, year, and notes fields
 - Clickable links in title and notes (URLs, wiki links, markdown links)
 - Filter cards by tag
-- Sort by index, title, or year
+- Sort by date added (default), title, or year
 - Reorder cards based on `{id}` order in the current note (IDs and notes are left untouched)
 - Undo/Redo for reorder and delete operations
 - Delete cards without touching your notes — IDs are stable and never reused
@@ -53,7 +54,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 
 | Setting | Description |
 |---------|-------------|
-| Title soft wrap | Allow long titles to wrap across multiple lines (default: on). Titles longer than two lines switch to a compact layout: the `[id]` and action buttons move to the top row and the title gets the full card width below them |
+| Title soft wrap | Allow long titles to wrap across multiple lines (default: on). Titles longer than three lines switch to a compact layout: the `[id]` and action buttons move to the top row and the title gets the full card width below them |
 | Card font size | Adjust the font size of card content, 10–20px (default: 13) |
 | Reference ID color | Color for `{id}` highlights in the editor (default: link color) |
 

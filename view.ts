@@ -17,7 +17,7 @@ export class ReferenceCardView extends ItemView {
   private settings: ReferenceCardsSettings;
   private filterTag: string = "";
   private searchQuery: string = "";
-  private sortField: "index" | "title" | "year" = "index";
+  private sortField: "title" | "year" | "added" = "added";
   private sortAscending: boolean = true;
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
@@ -130,12 +130,12 @@ export class ReferenceCardView extends ItemView {
     const sortRow = this.headerEl.createDiv({ cls: "ref-cards-sort-row" });
 
     const sortSelect = sortRow.createEl("select", { cls: "ref-cards-sort-select" });
-    sortSelect.createEl("option", { text: "Index", value: "index" });
+    sortSelect.createEl("option", { text: "Added", value: "added" });
     sortSelect.createEl("option", { text: "Title", value: "title" });
     sortSelect.createEl("option", { text: "Year", value: "year" });
     sortSelect.value = this.sortField;
     sortSelect.addEventListener("change", () => {
-      this.sortField = sortSelect.value as "index" | "title" | "year";
+      this.sortField = sortSelect.value as "title" | "year" | "added";
       this.renderCards();
     });
 
@@ -207,14 +207,14 @@ export class ReferenceCardView extends ItemView {
 
     filtered.sort((a, b) => {
       let cmp = 0;
-      if (this.sortField === "index") {
-        cmp = a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" });
-      } else if (this.sortField === "title") {
+      if (this.sortField === "title") {
         cmp = a.title.localeCompare(b.title);
       } else if (this.sortField === "year") {
         const ya = parseInt(a.year) || 0;
         const yb = parseInt(b.year) || 0;
         cmp = ya - yb;
+      } else if (this.sortField === "added") {
+        cmp = a.createdAt - b.createdAt;
       }
       return this.sortAscending ? cmp : -cmp;
     });
@@ -368,7 +368,7 @@ export class ReferenceCardView extends ItemView {
   }
 
   /**
-   * Soft-wrapped titles that span more than two lines are hard to read in a
+   * Soft-wrapped titles that span more than three lines are hard to read in a
    * narrow panel: the `[id]` badge and the action buttons get vertically
    * centered next to a tall block of text. For those cards, move `[id]` and the
    * buttons to a top row and let the title use the full card width underneath.
@@ -378,7 +378,7 @@ export class ReferenceCardView extends ItemView {
 
     // Always measure in the default inline layout. Measuring a full-width
     // multiline title would report fewer lines and make the class flip back and
-    // forth (3 lines inline -> 2 lines full width -> 3 lines inline -> ...).
+    // forth (4 lines inline -> 3 lines full width -> 4 lines inline -> ...).
     for (const topRow of topRows) {
       topRow.removeClass("ref-card-top-multiline");
     }
@@ -402,7 +402,7 @@ export class ReferenceCardView extends ItemView {
     const titleInput = topRow.querySelector<HTMLElement>(".ref-card-title-edit");
     const visibleTitle = titleInput && titleInput.style.display !== "none" ? titleInput : titleView;
     if (!visibleTitle) return;
-    if (this.countTitleLines(visibleTitle) > 2) {
+    if (this.countTitleLines(visibleTitle) > 3) {
       topRow.addClass("ref-card-top-multiline");
     }
   }
@@ -644,13 +644,82 @@ export class ReferenceCardView extends ItemView {
     const cardEl = this.cardContainer.querySelector<HTMLElement>(
       `[data-card-id="${CSS.escape(card.id)}"]`
     );
-    if (cardEl) {
-      cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
-      // Enter edit mode on the fresh card (showTitleEdit is bound to dblclick).
-      cardEl
-        .querySelector<HTMLElement>(".ref-card-title-view")
-        ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    if (!cardEl) return;
+
+    // Establish the card's final on-screen position before animating, then fly
+    // a copy of it in from the "+" button.
+    cardEl.scrollIntoView({ behavior: "auto", block: "center" });
+    const addBtn = this.headerEl.querySelector<HTMLElement>(".ref-cards-add-btn");
+    const enterEdit = () => this.focusCardTitle(cardEl);
+
+    if (addBtn && !this.prefersReducedMotion()) {
+      this.animateCardArrival(cardEl, addBtn, enterEdit);
+    } else {
+      enterEdit();
     }
+  }
+
+  private focusCardTitle(cardEl: HTMLElement): void {
+    // Enter edit mode on the fresh card (showTitleEdit is bound to dblclick).
+    cardEl
+      .querySelector<HTMLElement>(".ref-card-title-view")
+      ?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  }
+
+  private prefersReducedMotion(): boolean {
+    return (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
+
+  /**
+   * Flies a non-interactive copy of `cardEl` from `fromEl` to the card's current
+   * position (mirrors the `scrollToCard` highlight pattern). The real card keeps
+   * its slot but stays hidden until the copy lands, then is revealed and
+   * `onDone` runs once.
+   */
+  private animateCardArrival(cardEl: HTMLElement, fromEl: HTMLElement, onDone: () => void): void {
+    const cardRect = cardEl.getBoundingClientRect();
+    const fromRect = fromEl.getBoundingClientRect();
+
+    // Nothing to animate (hidden layout / detached element): fail soft.
+    if (cardRect.width === 0 || cardRect.height === 0 || fromRect.width === 0) {
+      onDone();
+      return;
+    }
+
+    const ghost = cardEl.cloneNode(true) as HTMLElement;
+    ghost.addClass("ref-card-ghost");
+    ghost.style.left = `${cardRect.left}px`;
+    ghost.style.top = `${cardRect.top}px`;
+    ghost.style.width = `${cardRect.width}px`;
+    ghost.style.height = `${cardRect.height}px`;
+    document.body.appendChild(ghost);
+    cardEl.addClass("ref-card-arriving");
+
+    // Offset that moves the ghost's centre onto the source element's centre.
+    const dx = fromRect.left + fromRect.width / 2 - (cardRect.left + cardRect.width / 2);
+    const dy = fromRect.top + fromRect.height / 2 - (cardRect.top + cardRect.height / 2);
+
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      ghost.remove();
+      cardEl.removeClass("ref-card-arriving");
+      onDone();
+    };
+
+    const animation = ghost.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px) scale(0.3)`, opacity: 0.2 },
+        { transform: "translate(0, 0) scale(1)", opacity: 1 },
+      ],
+      { duration: 340, easing: "cubic-bezier(0.22, 0.9, 0.3, 1)", fill: "forwards" }
+    );
+    animation.onfinish = finish;
+    animation.oncancel = finish;
   }
 
   async deleteCard(id: string): Promise<void> {

@@ -167,6 +167,21 @@
   animation: ref-card-flash 2s ease;
 }
 
+/* Ghost copy of a newly added card while it flies in from the "+" button. */
+.ref-card-ghost {
+  position: fixed;
+  margin: 0;
+  pointer-events: none;
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  will-change: transform, opacity;
+}
+
+/* Real card keeps its slot but stays hidden until the ghost lands. */
+.ref-card-arriving {
+  visibility: hidden;
+}
+
 @keyframes ref-card-flash {
   0% {
     border-color: var(--text-accent);

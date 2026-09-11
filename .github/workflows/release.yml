@@ -1,0 +1,52 @@
+name: Release Obsidian plugin
+
+# Runs on every push to main (that is, every time git.sh pushes).
+# It rebuilds main.js and replaces the assets of the release whose tag matches
+# the "version" in manifest.json. With version 1.0.0 this replaces the existing
+# 1.0.0 release files; bump manifest.json and it will publish that new release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Don't let two rapid pushes upload assets at the same time.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build plugin
+        run: npm run build
+
+      - name: Publish release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="$(node -p "require('./manifest.json').version")"
+          echo "Target release: $tag"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag exists — replacing its assets."
+          else
+            echo "Release $tag not found — creating it."
+            gh release create "$tag" --title "$tag"
+          fi
+
+          # --clobber overwrites the existing assets with the same names.
+          gh release upload "$tag" main.js manifest.json styles.css --clobber
