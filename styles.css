@@ -90,6 +90,15 @@
   background: var(--interactive-hover);
 }
 
+.ref-cards-order-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ref-cards-order-btn:disabled:hover {
+  background: var(--interactive-normal);
+}
+
 .ref-cards-sort-btn {
   padding: 4px 10px;
   border-radius: 4px;

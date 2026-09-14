@@ -33,6 +33,16 @@ export default class ReferenceCardsPlugin extends Plugin {
           : DEFAULT_SETTINGS.cardFontSize,
       refIdColor:
         typeof loaded.refIdColor === "string" ? loaded.refIdColor : DEFAULT_SETTINGS.refIdColor,
+      sortField:
+        loaded.sortField === "manual" ||
+        loaded.sortField === "title" ||
+        loaded.sortField === "year"
+          ? loaded.sortField
+          : DEFAULT_SETTINGS.sortField,
+      sortAscending:
+        typeof loaded.sortAscending === "boolean"
+          ? loaded.sortAscending
+          : DEFAULT_SETTINGS.sortAscending,
     };
 
     this.addSettingTab(new ReferenceCardsSettingTab(this.app, this));

@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, App, MarkdownView, Notice, setIcon } from "obsidian";
 import { ReferenceCard, PluginData, createEmptyCard, getAllTags, orderCards } from "./data";
-import { ReferenceCardsSettings } from "./settings";
+import { ReferenceCardsSettings, SortField } from "./settings";
 import { collectRefIds, escapeRegExp, generateCardId, maskProtectedRegions } from "./refs";
 import { buildMarkdownLink, extractPastedLink, fetchLinkTitle, isMarkdownLink } from "./link-title";
 
@@ -18,8 +18,6 @@ export class ReferenceCardView extends ItemView {
   private settings: ReferenceCardsSettings;
   private filterTag: string = "";
   private searchQuery: string = "";
-  private sortField: "title" | "year" | "added" = "added";
-  private sortAscending: boolean = true;
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
   private reorderSnapshot: string[] | null = null;
@@ -132,23 +130,32 @@ export class ReferenceCardView extends ItemView {
 
     const sortSelect = sortRow.createEl("select", { cls: "ref-cards-sort-select" });
     sortSelect.createEl("option", { text: "Added", value: "added" });
+    sortSelect.createEl("option", { text: "Manual", value: "manual" });
     sortSelect.createEl("option", { text: "Title", value: "title" });
     sortSelect.createEl("option", { text: "Year", value: "year" });
-    sortSelect.value = this.sortField;
-    sortSelect.addEventListener("change", () => {
-      this.sortField = sortSelect.value as "title" | "year" | "added";
-      this.renderCards();
-    });
+    sortSelect.value = this.settings.sortField;
 
     const orderBtn = sortRow.createEl("button", {
       cls: "ref-cards-order-btn",
-      text: this.sortAscending ? "↑" : "↓",
+      text: this.settings.sortAscending ? "↑" : "↓",
     });
-    orderBtn.title = this.sortAscending ? "Ascending" : "Descending";
+    // Manual order follows the persisted array order, so ascending/descending
+    // has nothing to flip.
+    orderBtn.disabled = this.settings.sortField === "manual";
+    orderBtn.title = this.settings.sortAscending ? "Ascending" : "Descending";
+
+    sortSelect.addEventListener("change", () => {
+      this.settings.sortField = sortSelect.value as SortField;
+      orderBtn.disabled = this.settings.sortField === "manual";
+      void this.saveData();
+      this.renderCards();
+    });
+
     orderBtn.addEventListener("click", () => {
-      this.sortAscending = !this.sortAscending;
-      orderBtn.textContent = this.sortAscending ? "↑" : "↓";
-      orderBtn.title = this.sortAscending ? "Ascending" : "Descending";
+      this.settings.sortAscending = !this.settings.sortAscending;
+      orderBtn.textContent = this.settings.sortAscending ? "↑" : "↓";
+      orderBtn.title = this.settings.sortAscending ? "Ascending" : "Descending";
+      void this.saveData();
       this.renderCards();
     });
 
@@ -206,25 +213,72 @@ export class ReferenceCardView extends ItemView {
       });
     }
 
-    filtered.sort((a, b) => {
-      let cmp = 0;
-      if (this.sortField === "title") {
-        cmp = a.title.localeCompare(b.title);
-      } else if (this.sortField === "year") {
-        const ya = parseInt(a.year) || 0;
-        const yb = parseInt(b.year) || 0;
-        cmp = ya - yb;
-      } else if (this.sortField === "added") {
-        cmp = a.createdAt - b.createdAt;
-      }
-      return this.sortAscending ? cmp : -cmp;
-    });
+    // "Manual" keeps the array order above, which reorder() rewrites; every
+    // other mode derives its own order and leaves the persisted array alone.
+    if (this.settings.sortField !== "manual") {
+      filtered.sort((a, b) => {
+        let cmp = 0;
+        if (this.settings.sortField === "title") {
+          cmp = a.title.localeCompare(b.title);
+        } else if (this.settings.sortField === "year") {
+          const ya = parseInt(a.year) || 0;
+          const yb = parseInt(b.year) || 0;
+          cmp = ya - yb;
+        } else if (this.settings.sortField === "added") {
+          cmp = a.createdAt - b.createdAt;
+        }
+        return this.settings.sortAscending ? cmp : -cmp;
+      });
+    }
 
     for (const card of filtered) {
       this.renderCard(card);
     }
 
     this.refreshAllTitleWrapLayouts();
+  }
+
+  /**
+   * Remembers a visible card and its offset from the top of the scroll area.
+   * `renderCards()` empties and rebuilds the list, which resets the list's
+   * `scrollTop`, so callers capture an anchor before the rebuild and restore it
+   * afterwards to keep the panel where the user was looking.
+   *
+   * The anchor is the first card touching the viewport. When that card is the
+   * one being deleted it cannot anchor anything, so its neighbour is used: the
+   * card above keeps the scroll position, letting the following cards slide up
+   * into the freed slot.
+   */
+  private captureScrollAnchor(excludeId: string | null): { id: string; top: number } | null {
+    const containerTop = this.cardContainer.getBoundingClientRect().top;
+    const cards = Array.from(
+      this.cardContainer.querySelectorAll<HTMLElement>(".ref-card[data-card-id]")
+    );
+
+    let anchor = cards.find((el) => el.getBoundingClientRect().bottom > containerTop + 1) ?? null;
+    if (anchor && excludeId && anchor.dataset.cardId === excludeId) {
+      anchor =
+        (anchor.previousElementSibling as HTMLElement | null) ??
+        (anchor.nextElementSibling as HTMLElement | null);
+    }
+    if (!anchor) return null;
+
+    const id = anchor.dataset.cardId;
+    if (!id) return null;
+    return { id, top: anchor.getBoundingClientRect().top - containerTop };
+  }
+
+  /** Puts the anchor card back at the offset captured before a re-render. */
+  private restoreScrollAnchor(anchor: { id: string; top: number } | null): void {
+    if (!anchor) return;
+    const el = this.cardContainer.querySelector<HTMLElement>(
+      `[data-card-id="${CSS.escape(anchor.id)}"]`
+    );
+    if (!el) return;
+
+    const containerTop = this.cardContainer.getBoundingClientRect().top;
+    const current = el.getBoundingClientRect().top - containerTop;
+    this.cardContainer.scrollTop += current - anchor.top;
   }
 
   private renderCard(card: ReferenceCard): void {
@@ -840,8 +894,12 @@ export class ReferenceCardView extends ItemView {
     this.data.cards.splice(deletedIndex, 1);
 
     await this.saveData();
+    // Capture right before the rebuild: deleting re-renders every card and
+    // would otherwise reset the panel's scroll position.
+    const anchor = this.captureScrollAnchor(id);
     this.renderCards();
     this.renderHeader();
+    this.restoreScrollAnchor(anchor);
 
     // Show notice with undo option
     const notice = new Notice(
@@ -866,8 +924,11 @@ export class ReferenceCardView extends ItemView {
     this.deleteSnapshot = null;
 
     await this.saveData();
+    // Undoing also re-renders the list, so hold the scroll position too.
+    const anchor = this.captureScrollAnchor(null);
     this.renderCards();
     this.renderHeader();
+    this.restoreScrollAnchor(anchor);
 
     new Notice("Delete undone.", 3000);
   }
@@ -879,8 +940,12 @@ export class ReferenceCardView extends ItemView {
     this.applyCardOrder(this.reorderRedoSnapshot);
     this.reorderRedoSnapshot = null;
 
+    this.settings.sortField = "manual";
     await this.saveData();
+    // Reordering rebuilds the list, so hold the scroll position.
+    const anchor = this.captureScrollAnchor(null);
     this.renderAll();
+    this.restoreScrollAnchor(anchor);
   }
 
   async redoDelete(): Promise<void> {
@@ -972,8 +1037,14 @@ export class ReferenceCardView extends ItemView {
     this.reorderRedoSnapshot = null;
     this.applyCardOrder(order);
 
+    // The list is only sorted by the array order in "Manual" mode, so switch to
+    // it — otherwise renderCards() would re-sort and hide the reorder.
+    this.settings.sortField = "manual";
     await this.saveData();
+    // Reordering rebuilds the list, so hold the scroll position.
+    const anchor = this.captureScrollAnchor(null);
     this.renderAll();
+    this.restoreScrollAnchor(anchor);
   }
 
   async undoReorder(): Promise<void> {
@@ -983,8 +1054,12 @@ export class ReferenceCardView extends ItemView {
     this.applyCardOrder(this.reorderSnapshot);
     this.reorderSnapshot = null;
 
+    this.settings.sortField = "manual";
     await this.saveData();
+    // Reordering rebuilds the list, so hold the scroll position.
+    const anchor = this.captureScrollAnchor(null);
     this.renderAll();
+    this.restoreScrollAnchor(anchor);
   }
 
   /** Reorders `this.data.cards` to match `order`; unknown ids are ignored. */

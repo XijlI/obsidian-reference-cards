@@ -1,11 +1,16 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ReferenceCardsPlugin from "./main";
 
+export type SortField = "added" | "manual" | "title" | "year";
+
 export interface ReferenceCardsSettings {
   fetchLinkTitles: boolean;
   titleSoftWrap: boolean;
   cardFontSize: number;
   refIdColor: string;
+  /** Card list ordering. `manual` follows the persisted `cards` array order. */
+  sortField: SortField;
+  sortAscending: boolean;
 }
 
 export const DEFAULT_SETTINGS: ReferenceCardsSettings = {
@@ -13,6 +18,8 @@ export const DEFAULT_SETTINGS: ReferenceCardsSettings = {
   titleSoftWrap: true,
   cardFontSize: 13,
   refIdColor: "",
+  sortField: "added",
+  sortAscending: true,
 };
 
 export class ReferenceCardsSettingTab extends PluginSettingTab {

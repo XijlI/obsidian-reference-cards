@@ -17,10 +17,11 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - Clickable links in title and notes (URLs, wiki links, markdown links)
 - Paste a link into a card title to fetch the page title automatically and insert it as `[title](url)`
 - Filter cards by tag
-- Sort by date added (default), title, or year
-- Reorder cards based on `{id}` order in the current note (IDs and notes are left untouched)
+- Sort by date added (default), manual card order, title, or year
+- Reorder cards based on `{id}` order in the current note and switch the list to Manual order (IDs and notes are left untouched)
 - Undo/Redo for reorder and delete operations
 - Delete cards without touching your notes — IDs are stable and never reused
+- Deleting a card (or undoing the delete) keeps the panel scrolled where you were, anchored to the surrounding cards; reorder and its undo/redo do the same
 - Show which vault files reference a card via the **?** button
 - Math and code blocks are ignored, so LaTeX like `\frac{1}{N}` inside `$…$` is never mistaken for a reference
 - Configurable card font size (10–20px)
@@ -31,8 +32,8 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 2. Click **+** to create a card, fill in title, tags, year, and notes
 3. Place cursor in a note, click **+** on a card to insert `{id}`
 4. Click `{id}` in Live Preview to jump to that card
-5. Use the sort dropdown and arrow button to change card order
-6. Use the toolbar buttons to reorder cards by the current note's `{id}` order, and to undo/redo
+5. Use the sort dropdown (Added / Manual / Title / Year) and the ↑/↓ button to change card order — the choice is remembered
+6. Use the toolbar buttons to reorder cards by the current note's `{id}` order, and to undo/redo. Reordering switches the list to **Manual** order so you see the result
 7. Double-click title or notes to edit
 8. Paste a bare URL into a title to turn it into `[page title](url)` (works with links copied from a browser page too; if the page can't be read, the pasted text is kept)
 9. Delete a card with **×** — notes are not modified and remaining IDs are unchanged
