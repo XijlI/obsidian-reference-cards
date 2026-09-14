@@ -19,6 +19,10 @@ export default class ReferenceCardsPlugin extends Plugin {
 
     this.data = { cards: normalizeCards(loaded.cards) };
     this.settings = {
+      fetchLinkTitles:
+        typeof loaded.fetchLinkTitles === "boolean"
+          ? loaded.fetchLinkTitles
+          : DEFAULT_SETTINGS.fetchLinkTitles,
       titleSoftWrap:
         typeof loaded.titleSoftWrap === "boolean"
           ? loaded.titleSoftWrap

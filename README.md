@@ -15,6 +15,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - Click `{id}` in Live Preview to jump to the card
 - Cards support title, tags, year, and notes fields
 - Clickable links in title and notes (URLs, wiki links, markdown links)
+- Paste a link into a card title to fetch the page title automatically and insert it as `[title](url)`
 - Filter cards by tag
 - Sort by date added (default), title, or year
 - Reorder cards based on `{id}` order in the current note (IDs and notes are left untouched)
@@ -33,8 +34,9 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 5. Use the sort dropdown and arrow button to change card order
 6. Use the toolbar buttons to reorder cards by the current note's `{id}` order, and to undo/redo
 7. Double-click title or notes to edit
-8. Delete a card with **×** — notes are not modified and remaining IDs are unchanged
-9. Click **?** on a card to see which files reference it
+8. Paste a bare URL into a title to turn it into `[page title](url)` (works with links copied from a browser page too; if the page can't be read, the pasted text is kept)
+9. Delete a card with **×** — notes are not modified and remaining IDs are unchanged
+10. Click **?** on a card to see which files reference it
 
 ## Installation
 
@@ -54,6 +56,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 
 | Setting | Description |
 |---------|-------------|
+| Fetch link titles on paste | When a URL is pasted into a card title, fetch the page title and insert it as a markdown link (default: on). Falls back to the pasted text when the page can't be read |
 | Title soft wrap | Allow long titles to wrap across multiple lines (default: on). Titles longer than three lines switch to a compact layout: the `[id]` and action buttons move to the top row and the title gets the full card width below them |
 | Card font size | Adjust the font size of card content, 10–20px (default: 13) |
 | Reference ID color | Color for `{id}` highlights in the editor (default: link color) |

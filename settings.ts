@@ -2,12 +2,14 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import type ReferenceCardsPlugin from "./main";
 
 export interface ReferenceCardsSettings {
+  fetchLinkTitles: boolean;
   titleSoftWrap: boolean;
   cardFontSize: number;
   refIdColor: string;
 }
 
 export const DEFAULT_SETTINGS: ReferenceCardsSettings = {
+  fetchLinkTitles: true,
   titleSoftWrap: true,
   cardFontSize: 13,
   refIdColor: "",
@@ -24,6 +26,20 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+
+    new Setting(containerEl)
+      .setName("Fetch link titles on paste")
+      .setDesc(
+        "When a URL is pasted into a card title, fetch the page title and insert it as a markdown link. If the page can't be read, the pasted text is kept as-is."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.fetchLinkTitles)
+          .onChange(async (value) => {
+            this.plugin.settings.fetchLinkTitles = value;
+            await this.plugin.saveSettings();
+          })
+      );
 
     new Setting(containerEl)
       .setName("Title soft wrap")

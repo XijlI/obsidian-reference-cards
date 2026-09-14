@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, App, MarkdownView, Notice, setIcon } from "obs
 import { ReferenceCard, PluginData, createEmptyCard, getAllTags, orderCards } from "./data";
 import { ReferenceCardsSettings } from "./settings";
 import { collectRefIds, escapeRegExp, generateCardId, maskProtectedRegions } from "./refs";
+import { buildMarkdownLink, extractPastedLink, fetchLinkTitle, isMarkdownLink } from "./link-title";
 
 export const VIEW_TYPE = "reference-cards-view";
 
@@ -278,6 +279,9 @@ export class ReferenceCardView extends ItemView {
       this.refreshTitleWrapLayout(topRow);
       this.debouncedSave();
     });
+    titleInput.addEventListener("paste", (e) =>
+      this.handleTitlePaste(e, titleInput, card)
+    );
 
     const insertBtn = topRow.createEl("button", { cls: "ref-card-insert-btn", text: "+" });
     insertBtn.title = "Insert reference at cursor";
@@ -365,6 +369,103 @@ export class ReferenceCardView extends ItemView {
       this.resizeTextarea(notesArea);
       this.debouncedSave();
     });
+  }
+
+  /**
+   * Turns a pasted link into a markdown link in the Title field.
+   *
+   * Pasting a bare URL — or a single link copied from a browser page — fetches
+   * the page title and inserts `[title](url)`. The clipboard text is shown
+   * immediately inside a temporary span and upgraded in place once the title
+   * arrives, so a slow or failed lookup still leaves a usable value. Anything
+   * that is not exactly one web link keeps the editor's default paste.
+   */
+  private handleTitlePaste(e: ClipboardEvent, titleInput: HTMLElement, card: ReferenceCard): void {
+    if (!this.settings.fetchLinkTitles) return;
+    const clipboard = e.clipboardData;
+    if (!clipboard) return;
+
+    const text = clipboard.getData("text/plain") || "";
+    // Already a markdown link (pasted markdown source): leave it untouched.
+    if (isMarkdownLink(text)) return;
+
+    const link = extractPastedLink(text, clipboard.getData("text/html") || null);
+    if (!link) return;
+
+    e.preventDefault();
+
+    // A clipboard label reads better than a raw URL while the title is in
+    // flight, and is the fallback when the page cannot be read.
+    const fallback =
+      link.label && !/^https?:\/\//i.test(link.label)
+        ? buildMarkdownLink(link.label, link.url)
+        : link.url;
+
+    const pending = document.createElement("span");
+    pending.className = "ref-card-title-pending";
+    pending.textContent = fallback;
+    this.insertIntoEditable(titleInput, pending);
+
+    fetchLinkTitle(link.url).then((title) => {
+      // The user may have deleted the pasted text (or the card) meanwhile.
+      if (!pending.isConnected || !title) return;
+      pending.textContent = buildMarkdownLink(title, link.url);
+      // The field's own input handling copies the text onto the card and saves.
+      titleInput.dispatchEvent(new Event("input", { bubbles: true }));
+      // If editing already ended (or the panel re-rendered), repaint the view.
+      this.refreshRenderedTitle(card);
+    });
+  }
+
+  /**
+   * Inserts plain text (as a node) at the caret of a contentEditable and runs
+   * the field's `input` handling. Using Range directly instead of a normal
+   * paste keeps rich clipboard HTML — which previously dropped the link's
+   * href — out of the field.
+   */
+  private insertIntoEditable(el: HTMLElement, node: Node): void {
+    el.focus();
+    const selection = window.getSelection();
+    const range =
+      selection && selection.rangeCount > 0 && el.contains(selection.anchorNode)
+        ? selection.getRangeAt(0)
+        : null;
+
+    if (range && selection) {
+      range.deleteContents();
+      range.insertNode(node);
+      range.setStartAfter(node);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      el.appendChild(node);
+    }
+
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  /**
+   * Repaints a card's rendered title from `card.title` (used after an async
+   * title lookup lands while the field is back in view mode, or after a
+   * re-render replaced the element the paste started in).
+   */
+  private refreshRenderedTitle(card: ReferenceCard): void {
+    const cardEl = this.cardContainer.querySelector<HTMLElement>(
+      `.ref-card[data-card-id="${card.id}"]`
+    );
+    if (!cardEl) return;
+    const titleInput = cardEl.querySelector<HTMLElement>(".ref-card-title-edit");
+    // While editing, the input already shows the updated text.
+    if (titleInput && titleInput.style.display !== "none") return;
+
+    const titleView = cardEl.querySelector<HTMLElement>(".ref-card-title-view");
+    if (!titleView) return;
+    titleView.empty();
+    this.renderTextWithLinks(card.title, titleView);
+
+    const topRow = cardEl.querySelector<HTMLElement>(".ref-card-top");
+    if (topRow) this.refreshTitleWrapLayout(topRow);
   }
 
   /**
