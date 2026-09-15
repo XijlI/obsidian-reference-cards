@@ -17,8 +17,9 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - Clickable links in title and notes (URLs, wiki links, markdown links)
 - Paste a link into a card title to fetch the page title automatically and insert it as `[title](url)`
 - Filter cards by tag
-- Sort by date added (default), citation order, title, or year
+- Sort by date added (default), citation order, title, year, or a custom order you set yourself
 - **Citation** sort orders cards by where their `{id}` first appears in the current note (cards the note does not cite stay after the cited ones; IDs and notes are left untouched)
+- **Custom** sort lets you drag cards into any order; the order is saved and kept across reloads
 - Undo/Redo for card deletions
 - Delete cards without touching your notes — IDs are stable and never reused
 - Deleting a card (or undoing the delete) keeps the panel scrolled where you were, anchored to the surrounding cards
@@ -32,13 +33,14 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 2. Click **+** to create a card, fill in title, tags, year, and notes
 3. Place cursor in a note, click **+** on a card to insert `{id}`
 4. Click `{id}` in Live Preview to jump to that card
-5. Use the sort dropdown (Added / Citation / Title / Year) and the ↑/↓ button to change card order — the choice is remembered
+5. Use the sort dropdown (Added / Citation / Title / Year / Custom) and the ↑/↓ button to change card order — the choice is remembered
 6. Pick **Citation** to order cards by where their `{id}` first appears in the current note; the ↑/↓ button reverses the order of the cited cards
-7. Use the **history** button (or click the deletion notice) to undo the last card deletion
-8. Double-click title or notes to edit
-9. Paste a bare URL into a title to turn it into `[page title](url)` (works with links copied from a browser page too; if the page can't be read, the pasted text is kept)
-10. Delete a card with **×** — notes are not modified and remaining IDs are unchanged
-11. Click **?** on a card to see which files reference it
+7. Pick **Custom** and drag a card by its grip handle (or anywhere on the card that is not a field or button) to place it; a line shows where it will land. The order is saved immediately
+8. Use the **history** button (or click the deletion notice) to undo the last card deletion
+9. Double-click title or notes to edit
+10. Paste a bare URL into a title to turn it into `[page title](url)` (works with links copied from a browser page too; if the page can't be read, the pasted text is kept)
+11. Delete a card with **×** — notes are not modified and remaining IDs are unchanged
+12. Click **?** on a card to see which files reference it
 
 ## Installation
 

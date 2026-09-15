@@ -1,14 +1,18 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ReferenceCardsPlugin from "./main";
 
-export type SortField = "added" | "citation" | "title" | "year";
+export type SortField = "added" | "citation" | "custom" | "title" | "year";
 
 export interface ReferenceCardsSettings {
   fetchLinkTitles: boolean;
   titleSoftWrap: boolean;
   cardFontSize: number;
   refIdColor: string;
-  /** Card list ordering. `citation` follows the first `{id}` appearance in the active note. */
+  /**
+   * Card list ordering. `custom` follows the persisted `cards` array order and
+   * is the mode in which cards can be drag-reordered; `citation` follows the
+   * first `{id}` appearance in the active note.
+   */
   sortField: SortField;
   sortAscending: boolean;
 }
@@ -21,6 +25,25 @@ export const DEFAULT_SETTINGS: ReferenceCardsSettings = {
   sortField: "added",
   sortAscending: true,
 };
+
+/**
+ * Coerces a value loaded from `data.json` into a valid sort mode. The legacy
+ * `manual` mode showed the persisted array order, which is exactly what
+ * `custom` shows now, so those users keep their view (and gain drag-reorder).
+ */
+export function normalizeSortField(value: unknown): SortField {
+  if (
+    value === "added" ||
+    value === "citation" ||
+    value === "custom" ||
+    value === "title" ||
+    value === "year"
+  ) {
+    return value;
+  }
+  if (value === "manual") return "custom";
+  return DEFAULT_SETTINGS.sortField;
+}
 
 export class ReferenceCardsSettingTab extends PluginSettingTab {
   plugin: ReferenceCardsPlugin;

@@ -7,6 +7,14 @@ import { buildMarkdownLink, extractPastedLink, fetchLinkTitle, isMarkdownLink } 
 export const VIEW_TYPE = "reference-cards-view";
 
 const CITATION_SORT_TOOLTIP = "Sort cards by the first appearence in current file";
+const CUSTOM_SORT_TOOLTIP = "Drag cards to set your own order — it is saved and kept";
+
+/** Explanation shown on the closed sort control and the matching option. */
+function sortFieldTooltip(field: SortField): string {
+  if (field === "citation") return CITATION_SORT_TOOLTIP;
+  if (field === "custom") return CUSTOM_SORT_TOOLTIP;
+  return "";
+}
 
 interface DeleteSnapshot {
   deletedCard: ReferenceCard;
@@ -28,6 +36,10 @@ export class ReferenceCardView extends ItemView {
   private activeBacklinksCleanup: (() => void) | null = null;
   private titleLayoutObserver: ResizeObserver | null = null;
   private lastTitleLayoutWidth = -1;
+  private draggedCardId: string | null = null;
+  private dragBlocked = false;
+  private dropTargetId: string | null = null;
+  private dropAfter = false;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -78,6 +90,15 @@ export class ReferenceCardView extends ItemView {
     });
 
     this.cardContainer = container.createDiv({ cls: "ref-cards-list" });
+    // Drag-and-drop reordering is handled at the list level so the gaps
+    // between cards are drop targets too. The listeners live on the container,
+    // which survives `renderCards()` rebuilds.
+    this.cardContainer.addEventListener("dragover", (e) => this.onCardDragOver(e));
+    this.cardContainer.addEventListener("drop", (e) => this.onCardDrop(e));
+    this.cardContainer.addEventListener("dragleave", (e) => {
+      const next = e.relatedTarget as Node | null;
+      if (!next || !this.cardContainer.contains(next)) this.clearDropMarkers();
+    });
     this.renderCards();
 
     // Re-evaluate title wrapping whenever the panel is resized (line count depends on width).
@@ -137,20 +158,25 @@ export class ReferenceCardView extends ItemView {
     });
     sortSelect.createEl("option", { text: "Title", value: "title" });
     sortSelect.createEl("option", { text: "Year", value: "year" });
+    sortSelect.createEl("option", { text: "Custom", value: "custom", title: CUSTOM_SORT_TOOLTIP });
     sortSelect.value = this.settings.sortField;
     // Option titles only show while the dropdown is open, so mirror the
     // explanation on the closed control as well.
-    sortSelect.title = this.settings.sortField === "citation" ? CITATION_SORT_TOOLTIP : "";
+    sortSelect.title = sortFieldTooltip(this.settings.sortField);
 
     const orderBtn = sortRow.createEl("button", {
       cls: "ref-cards-order-btn",
       text: this.settings.sortAscending ? "↑" : "↓",
     });
+    // Custom order is whatever the user dragged into place, so there is nothing
+    // for ascending/descending to flip.
+    orderBtn.disabled = this.settings.sortField === "custom";
     orderBtn.title = this.settings.sortAscending ? "Ascending" : "Descending";
 
     sortSelect.addEventListener("change", () => {
       this.settings.sortField = sortSelect.value as SortField;
-      sortSelect.title = this.settings.sortField === "citation" ? CITATION_SORT_TOOLTIP : "";
+      sortSelect.title = sortFieldTooltip(this.settings.sortField);
+      orderBtn.disabled = this.settings.sortField === "custom";
       void this.saveData();
       this.renderCards();
     });
@@ -195,11 +221,15 @@ export class ReferenceCardView extends ItemView {
       });
     }
 
+    // "Custom" keeps the array order above, which drag-and-drop rewrites; every
+    // other mode derives its own order and leaves the persisted array alone.
     // "Citation" ranks each card by the first `{id}` appearance in the active
     // note; cards the note does not cite are pinned after the cited ones in
     // their persisted array order. Ascending/descending flips only the cited
     // cards, so the uncited ones never jump to the top.
-    if (this.settings.sortField === "citation") {
+    if (this.settings.sortField === "custom") {
+      // Persisted order as-is.
+    } else if (this.settings.sortField === "citation") {
       const rank = new Map(this.getCitationOrder().map((id, index) => [id, index]));
       filtered.sort((a, b) => {
         const ra = rank.get(a.id);
@@ -289,6 +319,15 @@ export class ReferenceCardView extends ItemView {
     const cardEl = this.cardContainer.createDiv({ cls: "ref-card", attr: { "data-card-id": String(card.id) } });
 
     const topRow = cardEl.createDiv({ cls: "ref-card-top" });
+
+    if (this.settings.sortField === "custom") {
+      const handle = topRow.createSpan({
+        cls: "ref-card-drag-handle",
+        attr: { "aria-label": "Drag to reorder" },
+      });
+      handle.title = "Drag to reorder";
+      setIcon(handle, "grip-vertical");
+    }
 
     topRow.createSpan({ cls: "ref-card-id", text: `[${card.id}]` });
 
@@ -427,6 +466,138 @@ export class ReferenceCardView extends ItemView {
       this.resizeTextarea(notesArea);
       this.debouncedSave();
     });
+
+    if (this.settings.sortField === "custom") {
+      this.enableCardDrag(cardEl, card);
+    }
+  }
+
+  /**
+   * Makes a card draggable. Only active in `custom` sort mode, where the
+   * persisted array order is what the list shows, so a drop can rewrite it.
+   */
+  private enableCardDrag(cardEl: HTMLElement, card: ReferenceCard): void {
+    cardEl.draggable = true;
+
+    // A press that starts on a field or button must keep its normal behaviour
+    // (selecting text, clicking) rather than starting a card drag.
+    cardEl.addEventListener("mousedown", (e) => {
+      const target = e.target as HTMLElement | null;
+      this.dragBlocked = !!target?.closest(
+        "input, textarea, [contenteditable='true'], a, button"
+      );
+    });
+
+    cardEl.addEventListener("dragstart", (e) => {
+      if (this.dragBlocked || !e.dataTransfer) {
+        e.preventDefault();
+        return;
+      }
+      this.draggedCardId = card.id;
+      e.dataTransfer.effectAllowed = "move";
+      // Some platforms refuse to start a drag without payload data.
+      e.dataTransfer.setData("text/plain", card.id);
+      cardEl.addClass("ref-card-dragging");
+    });
+
+    cardEl.addEventListener("dragend", () => {
+      this.draggedCardId = null;
+      this.dragBlocked = false;
+      cardEl.removeClass("ref-card-dragging");
+      this.clearDropMarkers();
+    });
+  }
+
+  private onCardDragOver(e: DragEvent): void {
+    if (!this.draggedCardId) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+
+    const { targetId, after } = this.resolveDropPosition(e.clientY);
+    if (!targetId) {
+      this.clearDropMarkers();
+      return;
+    }
+    this.showDropMarker(targetId, after);
+  }
+
+  private onCardDrop(e: DragEvent): void {
+    if (!this.draggedCardId) return;
+    e.preventDefault();
+
+    const draggedId = this.draggedCardId;
+    const { targetId, after } = this.resolveDropPosition(e.clientY);
+    this.draggedCardId = null;
+    this.clearDropMarkers();
+    if (targetId) {
+      void this.moveCardTo(draggedId, targetId, after);
+    }
+  }
+
+  /**
+   * Resolves a pointer height to the card it should be dropped before/after.
+   * The dragged card is skipped so it can never target itself.
+   */
+  private resolveDropPosition(clientY: number): { targetId: string | null; after: boolean } {
+    const cards = Array.from(
+      this.cardContainer.querySelectorAll<HTMLElement>(".ref-card[data-card-id]")
+    ).filter((el) => el.dataset.cardId !== this.draggedCardId);
+
+    for (const el of cards) {
+      const rect = el.getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) {
+        return { targetId: el.dataset.cardId ?? null, after: false };
+      }
+    }
+    // Below the last other card: append after it.
+    const last = cards[cards.length - 1]?.dataset.cardId ?? null;
+    return { targetId: last, after: true };
+  }
+
+  private showDropMarker(targetId: string, after: boolean): void {
+    if (this.dropTargetId === targetId && this.dropAfter === after) return;
+    this.clearDropMarkers();
+
+    const el = this.cardContainer.querySelector<HTMLElement>(
+      `.ref-card[data-card-id="${CSS.escape(targetId)}"]`
+    );
+    if (!el) return;
+    this.dropTargetId = targetId;
+    this.dropAfter = after;
+    el.addClass(after ? "ref-card-drop-after" : "ref-card-drop-before");
+  }
+
+  private clearDropMarkers(): void {
+    this.dropTargetId = null;
+    this.dropAfter = false;
+    this.cardContainer
+      .querySelectorAll<HTMLElement>(".ref-card-drop-before, .ref-card-drop-after")
+      .forEach((el) => {
+        el.removeClass("ref-card-drop-before");
+        el.removeClass("ref-card-drop-after");
+      });
+  }
+
+  /**
+   * Moves `draggedId` next to `targetId` in the persisted array and saves, so
+   * the custom order survives a reload.
+   */
+  private async moveCardTo(draggedId: string, targetId: string, after: boolean): Promise<void> {
+    const cards = this.data.cards;
+    const fromIndex = cards.findIndex((c) => c.id === draggedId);
+    const targetIndexRaw = cards.findIndex((c) => c.id === targetId);
+    if (fromIndex === -1 || targetIndexRaw === -1 || draggedId === targetId) return;
+
+    const [moved] = cards.splice(fromIndex, 1);
+    // Removing the dragged card shifts the target left when it sat after it.
+    const targetIndex = fromIndex < targetIndexRaw ? targetIndexRaw - 1 : targetIndexRaw;
+    cards.splice(after ? targetIndex + 1 : targetIndex, 0, moved);
+
+    // The rebuild resets the list's scrollTop, so hold the position.
+    const anchor = this.captureScrollAnchor(null);
+    await this.saveData();
+    this.renderCards();
+    this.restoreScrollAnchor(anchor);
   }
 
   /**

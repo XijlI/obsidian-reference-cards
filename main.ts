@@ -3,7 +3,7 @@ import { Compartment } from "@codemirror/state";
 import { DEFAULT_DATA, normalizeCards, PluginData } from "./data";
 import { ReferenceCardView, VIEW_TYPE } from "./view";
 import { createEditorPlugin } from "./editor-plugin";
-import { ReferenceCardsSettings, DEFAULT_SETTINGS, ReferenceCardsSettingTab } from "./settings";
+import { ReferenceCardsSettings, DEFAULT_SETTINGS, ReferenceCardsSettingTab, normalizeSortField } from "./settings";
 
 export default class ReferenceCardsPlugin extends Plugin {
   private data: PluginData = { ...DEFAULT_DATA };
@@ -33,12 +33,7 @@ export default class ReferenceCardsPlugin extends Plugin {
           : DEFAULT_SETTINGS.cardFontSize,
       refIdColor:
         typeof loaded.refIdColor === "string" ? loaded.refIdColor : DEFAULT_SETTINGS.refIdColor,
-      sortField:
-        loaded.sortField === "citation" ||
-        loaded.sortField === "title" ||
-        loaded.sortField === "year"
-          ? loaded.sortField
-          : DEFAULT_SETTINGS.sortField,
+      sortField: normalizeSortField(loaded.sortField),
       sortAscending:
         typeof loaded.sortAscending === "boolean"
           ? loaded.sortAscending

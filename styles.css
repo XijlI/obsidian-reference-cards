@@ -191,6 +191,53 @@
   visibility: hidden;
 }
 
+/* Drag-to-reorder affordance, shown only in the "Custom" sort mode. */
+.ref-card-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: grab;
+}
+
+.ref-card-drag-handle:hover {
+  color: var(--text-accent);
+  background: var(--background-modifier-hover);
+}
+
+.ref-card-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* The card being dragged. */
+.ref-card-dragging {
+  opacity: 0.5;
+}
+
+/* Insertion line drawn in the 8px gap between cards. */
+.ref-card-drop-before::before,
+.ref-card-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text-accent);
+  pointer-events: none;
+}
+
+.ref-card-drop-before::before {
+  top: -5px;
+}
+
+.ref-card-drop-after::after {
+  bottom: -5px;
+}
+
 @keyframes ref-card-flash {
   0% {
     border-color: var(--text-accent);
