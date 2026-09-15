@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, App, MarkdownView, Notice, setIcon } from "obsidian";
-import { ReferenceCard, PluginData, createEmptyCard, getAllTags } from "./data";
+import { ReferenceCard, PluginData, createEmptyCard, findDuplicateTitle, getAllTags } from "./data";
 import { ReferenceCardsSettings, SortField, getCardBackgroundColors } from "./settings";
 import { collectRefIds, escapeRegExp, generateCardId, maskProtectedRegions } from "./refs";
 import { buildMarkdownLink, extractPastedLink, fetchLinkTitle, isMarkdownLink } from "./link-title";
@@ -378,7 +378,12 @@ export class ReferenceCardView extends ItemView {
     titleInput.textContent = card.title;
     titleInput.style.display = "none";
 
+    // Title as it was when this edit session began, so a rejected duplicate can
+    // be reverted (a brand-new card's session starts empty, so it is cleared).
+    let titleBeforeEdit = card.title;
+
     const showTitleEdit = () => {
+      titleBeforeEdit = card.title;
       titleView.style.display = "none";
       titleInput.style.display = "block";
       titleInput.focus();
@@ -386,6 +391,15 @@ export class ReferenceCardView extends ItemView {
     };
 
     const hideTitleEdit = () => {
+      if (!this.settings.allowDuplicateTitles) {
+        const duplicate = findDuplicateTitle(this.data.cards, card.title, card.id);
+        if (duplicate) {
+          card.title = titleBeforeEdit;
+          titleInput.textContent = card.title;
+          this.debouncedSave();
+          this.showDuplicateTitleNotice(duplicate);
+        }
+      }
       titleView.style.display = "";
       titleInput.style.display = "none";
       titleView.empty();
@@ -1069,6 +1083,31 @@ export class ReferenceCardView extends ItemView {
     this.tagSuggest = null;
     state.cleanup();
     state.popup.remove();
+  }
+
+  /**
+   * Warns that the typed title is already taken and offers a click-to-jump
+   * link. The Notice is a `DocumentFragment` so the link can call
+   * `scrollToCard()` (which also clears a filter/search hiding that card).
+   */
+  private showDuplicateTitleNotice(existing: ReferenceCard): void {
+    const body = document.createElement("div");
+    body.addClass("ref-card-duplicate-notice");
+    body.createEl("div", { text: "Identical title — click to jump to the existing card:" });
+    const link = body.createEl("a", {
+      cls: "ref-card-duplicate-link",
+      text: existing.title.trim(),
+    });
+
+    let notice: Notice | null = null;
+    link.addEventListener("click", () => {
+      this.scrollToCard(existing.id);
+      notice?.hide();
+    });
+
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(body);
+    notice = new Notice(fragment, 10000);
   }
 
   private closeBacklinksPopup(): void {

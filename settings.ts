@@ -1,5 +1,6 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type ReferenceCardsPlugin from "./main";
+import { getDuplicateTitles } from "./data";
 
 export type SortField = "added" | "citation" | "custom" | "title" | "year";
 
@@ -26,6 +27,12 @@ export const CARD_BG_PRESETS: { dark: CardBgPair; light: CardBgPair }[] = [
 export interface ReferenceCardsSettings {
   fetchLinkTitles: boolean;
   titleSoftWrap: boolean;
+  /**
+   * Whether several cards may share a title. While this is off a card cannot
+   * commit a title another card already has, and turning the setting off is
+   * refused until no shared titles remain.
+   */
+  allowDuplicateTitles: boolean;
   cardFontSize: number;
   refIdColor: string;
   /** Whether cards get the alternating background colours at all. */
@@ -48,6 +55,7 @@ export interface ReferenceCardsSettings {
 export const DEFAULT_SETTINGS: ReferenceCardsSettings = {
   fetchLinkTitles: true,
   titleSoftWrap: true,
+  allowDuplicateTitles: true,
   cardFontSize: 13,
   refIdColor: "",
   cardBgEnabled: false,
@@ -148,6 +156,29 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
     if (this.displayed) this.display();
   }
 
+  /**
+   * Shown when the toggle is refused. Lists every shared title so the user
+   * knows exactly which cards to disambiguate before retrying.
+   */
+  private showIdenticalTitlesNotice(titles: string[]): void {
+    const body = document.createElement("div");
+    body.addClass("ref-card-duplicate-notice");
+    body.createEl("div", {
+      text:
+        titles.length === 1
+          ? "Cannot require unique titles — this title is shared by more than one card:"
+          : `Cannot require unique titles — ${titles.length} titles are shared by more than one card:`,
+    });
+    const list = body.createEl("ul", { cls: "ref-card-duplicate-list" });
+    for (const title of titles) {
+      list.createEl("li", { text: title });
+    }
+
+    const fragment = document.createDocumentFragment();
+    fragment.appendChild(body);
+    new Notice(fragment, 10000);
+  }
+
   display(): void {
     const { containerEl } = this;
     this.displayed = true;
@@ -177,6 +208,32 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
             this.plugin.settings.titleSoftWrap = value;
             await this.plugin.saveSettings();
             this.plugin.refreshView();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Allow identical card titles")
+      .setDesc(
+        "When off, a card cannot take a title another card already uses: a new card keeps an empty title and a renamed card reverts. Turning this off is refused while any title is still shared."
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.allowDuplicateTitles)
+          .onChange(async (value) => {
+            if (!value) {
+              const duplicates = getDuplicateTitles(this.plugin.getCards());
+              if (duplicates.length > 0) {
+                // Refuse: force the setting back on (and persist it), then show
+                // what has to change first.
+                this.plugin.settings.allowDuplicateTitles = true;
+                await this.plugin.saveSettings();
+                this.display();
+                this.showIdenticalTitlesNotice(duplicates);
+                return;
+              }
+            }
+            this.plugin.settings.allowDuplicateTitles = value;
+            await this.plugin.saveSettings();
           })
       );
 

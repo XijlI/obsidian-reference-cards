@@ -40,6 +40,38 @@ export function getAllTags(cards: ReferenceCard[]): string[] {
 }
 
 /**
+ * The first other card whose title matches `title`. Comparison is trimmed and
+ * case-sensitive, and blank titles never count — every new card starts empty,
+ * so treating `""` as a duplicate would make several blank cards impossible.
+ */
+export function findDuplicateTitle(
+  cards: ReferenceCard[],
+  title: string,
+  excludeId: string
+): ReferenceCard | null {
+  const needle = title.trim();
+  if (!needle) return null;
+  return cards.find((card) => card.id !== excludeId && card.title.trim() === needle) ?? null;
+}
+
+/**
+ * Non-empty titles shared by more than one card, in first-appearance order.
+ * Used to refuse turning "Allow identical card titles" off while such titles
+ * still exist.
+ */
+export function getDuplicateTitles(cards: ReferenceCard[]): string[] {
+  const counts = new Map<string, number>();
+  for (const card of cards) {
+    const title = card.title.trim();
+    if (!title) continue;
+    counts.set(title, (counts.get(title) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([title]) => title);
+}
+
+/**
  * Coerces whatever is in data.json into well-formed cards: string IDs, unique
  * IDs, string fields, and a creation timestamp. Legacy numeric IDs (1-3 digits)
  * are preserved so existing `{1}`-style references keep working; anything

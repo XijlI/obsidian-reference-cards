@@ -1,6 +1,6 @@
 import { Plugin, WorkspaceLeaf, MarkdownView } from "obsidian";
 import { Compartment } from "@codemirror/state";
-import { DEFAULT_DATA, normalizeCards, PluginData } from "./data";
+import { DEFAULT_DATA, getDuplicateTitles, normalizeCards, PluginData, ReferenceCard } from "./data";
 import { ReferenceCardView, VIEW_TYPE } from "./view";
 import { createEditorPlugin } from "./editor-plugin";
 import {
@@ -35,6 +35,10 @@ export default class ReferenceCardsPlugin extends Plugin {
         typeof loaded.titleSoftWrap === "boolean"
           ? loaded.titleSoftWrap
           : DEFAULT_SETTINGS.titleSoftWrap,
+      allowDuplicateTitles:
+        typeof loaded.allowDuplicateTitles === "boolean"
+          ? loaded.allowDuplicateTitles
+          : DEFAULT_SETTINGS.allowDuplicateTitles,
       cardFontSize:
         typeof loaded.cardFontSize === "number"
           ? loaded.cardFontSize
@@ -54,6 +58,12 @@ export default class ReferenceCardsPlugin extends Plugin {
           ? loaded.sortAscending
           : DEFAULT_SETTINGS.sortAscending,
     };
+
+    // Invariant: unique titles can only be required when none are shared yet.
+    // Enforce it on load too, in case data.json was edited by hand.
+    if (!this.settings.allowDuplicateTitles && getDuplicateTitles(this.data.cards).length > 0) {
+      this.settings.allowDuplicateTitles = true;
+    }
 
     this.settingTab = new ReferenceCardsSettingTab(this.app, this);
     this.addSettingTab(this.settingTab);
@@ -123,6 +133,11 @@ export default class ReferenceCardsPlugin extends Plugin {
     if (this.view) {
       this.view.renderAll();
     }
+  }
+
+  /** Live card list, for settings that validate against the current titles. */
+  getCards(): ReferenceCard[] {
+    return this.data.cards;
   }
 
   reconfigureEditors(): void {

@@ -624,6 +624,29 @@
   text-overflow: ellipsis;
 }
 
+/* Notices for duplicate-title enforcement. */
+.ref-card-duplicate-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ref-card-duplicate-link {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ref-card-duplicate-list {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
 .ref-card-wikilink {
   color: var(--link-color);
   text-decoration-style: dashed;
