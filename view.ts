@@ -6,7 +6,7 @@ import { buildMarkdownLink, extractPastedLink, fetchLinkTitle, isMarkdownLink } 
 
 export const VIEW_TYPE = "reference-cards-view";
 
-const CITATION_SORT_TOOLTIP = "Sort cards by the first appearence in current file";
+const CITATION_SORT_TOOLTIP = "Sort cards by the first appearance in current file";
 const CUSTOM_SORT_TOOLTIP = "Drag cards to set your own order — it is saved and kept";
 
 /** Explanation shown on the closed sort control and the matching option. */
@@ -73,7 +73,7 @@ export class ReferenceCardView extends ItemView {
     const container = this.containerEl.children[1];
     container.empty();
     container.addClass("ref-cards-container");
-    (container as HTMLElement).style.setProperty("--ref-card-font-size", this.settings.cardFontSize + "px");
+    this.applyContainerStyles(container as HTMLElement);
 
     this.headerEl = container.createDiv({ cls: "ref-cards-header" });
     this.renderHeader();
@@ -1165,9 +1165,24 @@ export class ReferenceCardView extends ItemView {
     }, 2000);
   }
 
+  /**
+   * Mirrors the settings that are cheaper to express as CSS variables than as
+   * inline styles: the card font size and the reference-ID colour. The colour
+   * is only set when configured, so the stylesheet's `--link-color` default
+   * (matching the editor's `{id}` decoration) applies otherwise.
+   */
+  private applyContainerStyles(container: HTMLElement): void {
+    container.style.setProperty("--ref-card-font-size", this.settings.cardFontSize + "px");
+    if (this.settings.refIdColor) {
+      container.style.setProperty("--ref-card-id-color", this.settings.refIdColor);
+    } else {
+      container.style.removeProperty("--ref-card-id-color");
+    }
+  }
+
   renderAll(): void {
     const container = this.containerEl.children[1] as HTMLElement;
-    container.style.setProperty("--ref-card-font-size", this.settings.cardFontSize + "px");
+    this.applyContainerStyles(container);
     this.renderHeader();
     this.renderCards();
   }

@@ -101,7 +101,7 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Reference ID color")
-      .setDesc("Color for {id} highlights in the editor. Use reset to fall back to the default link color.")
+      .setDesc("Color for {id} highlights in the editor and for the [id] badge on cards. Use reset to fall back to the default link color.")
       .addColorPicker((picker) =>
         picker
           .setValue(this.plugin.settings.refIdColor || "#ffffff")
@@ -109,6 +109,7 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
             this.plugin.settings.refIdColor = value;
             await this.plugin.saveSettings();
             this.plugin.reconfigureEditors();
+            this.plugin.refreshView();
           })
       )
       .addExtraButton((button) =>
@@ -119,6 +120,7 @@ export class ReferenceCardsSettingTab extends PluginSettingTab {
             this.plugin.settings.refIdColor = "";
             await this.plugin.saveSettings();
             this.plugin.reconfigureEditors();
+            this.plugin.refreshView();
             this.display();
           })
       );

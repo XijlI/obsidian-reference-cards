@@ -282,7 +282,7 @@
 .ref-card-id {
   font-weight: 600;
   font-size: var(--ref-card-font-size, 13px);
-  color: var(--text-accent);
+  color: var(--ref-card-id-color, var(--link-color));
   flex-shrink: 0;
 }
 

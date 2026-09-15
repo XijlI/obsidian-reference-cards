@@ -63,7 +63,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 | Fetch link titles on paste | When a URL is pasted into a card title, fetch the page title and insert it as a markdown link (default: on). Falls back to the pasted text when the page can't be read |
 | Title soft wrap | Allow long titles to wrap across multiple lines (default: on). Titles longer than three lines switch to a compact layout: the `[id]` and action buttons move to the top row and the title gets the full card width below them |
 | Card font size | Adjust the font size of card content, 10–20px (default: 13) |
-| Reference ID color | Color for `{id}` highlights in the editor (default: link color) |
+| Reference ID color | Color for `{id}` highlights in the editor and for the `[id]` badge on cards (default: link color) |
 
 ## License
 
