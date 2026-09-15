@@ -17,6 +17,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - Clickable links in title and notes (URLs, wiki links, markdown links)
 - Paste a link into a card title to fetch the page title automatically and insert it as `[title](url)`
 - Filter cards by tag
+- While typing tags, matching tags already used on your cards are suggested below the field (↑/↓ to move, Enter to accept, Escape to dismiss)
 - Sort by date added (default), citation order, title, year, or a custom order you set yourself
 - **Citation** sort orders cards by where their `{id}` first appears in the current note (cards the note does not cite stay after the cited ones; IDs and notes are left untouched)
 - **Custom** sort lets you drag cards into any order; the order is saved and kept across reloads
@@ -39,9 +40,10 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 7. Pick **Custom** and drag a card by its grip handle (or anywhere on the card that is not a field or button) to place it; a line shows where it will land. The order is saved immediately
 8. Use the **history** button (or click the deletion notice) to undo the last card deletion
 9. Double-click title or notes to edit
-10. Paste a bare URL into a title to turn it into `[page title](url)` (works with links copied from a browser page too; if the page can't be read, the pasted text is kept)
-11. Delete a card with **×** — notes are not modified and remaining IDs are unchanged
-12. Click **?** on a card to see which files reference it
+10. Start typing in a card's **Tags** field to get suggestions from tags you already use; press Enter to accept (a `", "` is added so you can keep typing), ↑/↓ to choose, Escape to dismiss
+11. Paste a bare URL into a title to turn it into `[page title](url)` (works with links copied from a browser page too; if the page can't be read, the pasted text is kept)
+12. Delete a card with **×** — notes are not modified and remaining IDs are unchanged
+13. Click **?** on a card to see which files reference it
 
 ## Installation
 

@@ -497,6 +497,42 @@
   border-color: var(--text-accent);
 }
 
+/* Tag suggestions while typing, anchored under the tag input. Rendered on
+   `document.body` with fixed positioning so the card list's overflow cannot
+   clip it. */
+.ref-card-tag-suggest {
+  position: fixed;
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ref-card-tag-suggest-item {
+  font-size: var(--ref-card-font-size, 13px);
+  color: var(--text-normal);
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ref-card-tag-suggest-item:hover,
+.ref-card-tag-suggest-item.is-active {
+  background: var(--background-modifier-hover);
+  color: var(--text-accent);
+}
+
 .ref-card-notes-container {
   width: 100%;
   min-width: 0;

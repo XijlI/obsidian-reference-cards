@@ -21,6 +21,19 @@ interface DeleteSnapshot {
   deletedIndex: number;
 }
 
+/** Open tag-suggestion popup: which input owns it and what it is showing. */
+interface TagSuggestState {
+  input: HTMLInputElement;
+  popup: HTMLElement;
+  items: string[];
+  activeIndex: number;
+  /** Removes the window listeners registered while the popup is open. */
+  cleanup: () => void;
+}
+
+/** Maximum number of tag suggestions shown at once. */
+const TAG_SUGGEST_LIMIT = 12;
+
 export class ReferenceCardView extends ItemView {
   private data: PluginData;
   private saveData: () => Promise<void>;
@@ -34,6 +47,7 @@ export class ReferenceCardView extends ItemView {
   private deleteRedoSnapshot: { cardId: string } | null = null;
   private activeBacklinksPopup: HTMLElement | null = null;
   private activeBacklinksCleanup: (() => void) | null = null;
+  private tagSuggest: TagSuggestState | null = null;
   private titleLayoutObserver: ResizeObserver | null = null;
   private lastTitleLayoutWidth = -1;
   private draggedCardId: string | null = null;
@@ -116,6 +130,7 @@ export class ReferenceCardView extends ItemView {
 
   async onClose(): Promise<void> {
     this.closeBacklinksPopup();
+    this.closeTagSuggest();
     // Flush any pending debounced edit instead of dropping up to 500ms of work.
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
@@ -206,6 +221,8 @@ export class ReferenceCardView extends ItemView {
   }
 
   private renderCards(): void {
+    // Rebuilding removes the input the popup is anchored to, so drop it first.
+    this.closeTagSuggest();
     this.cardContainer.empty();
 
     // Copy before filtering/sorting: `this.data.cards` is the persisted order
@@ -411,7 +428,7 @@ export class ReferenceCardView extends ItemView {
     tagsRow.createSpan({ cls: "ref-card-label", text: "Tags:" });
     const tagsInput = tagsRow.createEl("input", {
       cls: "ref-card-tags-input",
-      attr: { type: "text", placeholder: "comma, separated" },
+      attr: { type: "text", placeholder: "comma, separated", autocomplete: "off" },
     });
     tagsInput.value = card.tags.join(", ");
     tagsInput.addEventListener("input", () => {
@@ -420,7 +437,10 @@ export class ReferenceCardView extends ItemView {
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
       this.debouncedSave();
+      this.updateTagSuggestions(tagsInput);
     });
+    tagsInput.addEventListener("keydown", (e) => this.onTagInputKeyDown(e, tagsInput));
+    tagsInput.addEventListener("blur", () => this.closeTagSuggest());
     tagsInput.addEventListener("change", () => {
       this.renderHeader();
     });
@@ -846,6 +866,209 @@ export class ReferenceCardView extends ItemView {
       }
     }
     return matches;
+  }
+
+  /**
+   * Opens or refreshes the tag suggestion popup for the segment the caret is
+   * in. Candidates are the tags already used on other cards — minus the ones
+   * this card already has — filtered by what has been typed (prefix matches
+   * first). Closes the popup when nothing matches.
+   */
+  private updateTagSuggestions(input: HTMLInputElement): void {
+    const segment = this.getTagSegment(input);
+
+    const usedElsewhere = new Set(
+      input.value
+        .split(",")
+        .filter((_part, index) => index !== segment.index)
+        .map((part) => part.trim().toLowerCase())
+        .filter((part) => part.length > 0)
+    );
+
+    const query = segment.text.trim().toLowerCase();
+    let matches = getAllTags(this.data.cards).filter(
+      (tag) => !usedElsewhere.has(tag.toLowerCase())
+    );
+
+    if (query.length > 0) {
+      matches = matches.filter((tag) => tag.toLowerCase().includes(query));
+      matches.sort((a, b) => {
+        const aPrefix = a.toLowerCase().startsWith(query) ? 0 : 1;
+        const bPrefix = b.toLowerCase().startsWith(query) ? 0 : 1;
+        return aPrefix !== bPrefix ? aPrefix - bPrefix : a.localeCompare(b);
+      });
+    }
+
+    matches = matches.slice(0, TAG_SUGGEST_LIMIT);
+    if (matches.length === 0) {
+      this.closeTagSuggest();
+      return;
+    }
+
+    this.showTagSuggest(input, matches);
+  }
+
+  /**
+   * The comma-separated segment around the caret, plus its index so the other
+   * segments (the tags this card already has) can be excluded from candidates.
+   */
+  private getTagSegment(input: HTMLInputElement): { index: number; text: string } {
+    const value = input.value;
+    const caret = input.selectionStart ?? value.length;
+    const start = value.lastIndexOf(",", Math.max(0, caret - 1)) + 1;
+    const nextComma = value.indexOf(",", caret);
+    const end = nextComma === -1 ? value.length : nextComma;
+    return {
+      index: value.slice(0, start).split(",").length - 1,
+      text: value.slice(start, end),
+    };
+  }
+
+  private showTagSuggest(input: HTMLInputElement, items: string[]): void {
+    let state = this.tagSuggest;
+    if (state && state.input !== input) {
+      this.closeTagSuggest();
+      state = null;
+    }
+
+    if (!state) {
+      const popup = document.body.createDiv({ cls: "ref-card-tag-suggest" });
+
+      const onDismiss = (event: Event) => {
+        // Scrolling the popup's own list must not close it.
+        if (event.target instanceof Node && popup.contains(event.target)) return;
+        this.closeTagSuggest();
+      };
+      window.addEventListener("scroll", onDismiss, true);
+      window.addEventListener("resize", onDismiss);
+
+      state = {
+        input,
+        popup,
+        items: [],
+        activeIndex: 0,
+        cleanup: () => {
+          window.removeEventListener("scroll", onDismiss, true);
+          window.removeEventListener("resize", onDismiss);
+        },
+      };
+      this.tagSuggest = state;
+    }
+
+    const current = state;
+    current.items = items;
+    current.activeIndex = Math.max(0, Math.min(current.activeIndex, items.length - 1));
+
+    current.popup.empty();
+    items.forEach((tag, index) => {
+      const item = current.popup.createDiv({
+        cls: "ref-card-tag-suggest-item" + (index === current.activeIndex ? " is-active" : ""),
+        text: tag,
+      });
+      item.addEventListener("mouseenter", () => {
+        if (this.tagSuggest !== current) return;
+        current.activeIndex = index;
+        this.highlightTagSuggestItem();
+      });
+      item.addEventListener("mousedown", (event) => {
+        // Don't let the press blur the input, or the popup would close first.
+        event.preventDefault();
+        this.acceptTagSuggestion(index);
+      });
+    });
+
+    this.positionTagSuggestPopup();
+  }
+
+  private highlightTagSuggestItem(): void {
+    const state = this.tagSuggest;
+    if (!state) return;
+    Array.from(state.popup.children).forEach((child, index) => {
+      child.classList.toggle("is-active", index === state.activeIndex);
+    });
+  }
+
+  /** Anchors the popup under the input, flipping above it near the viewport edge. */
+  private positionTagSuggestPopup(): void {
+    const state = this.tagSuggest;
+    if (!state) return;
+
+    const rect = state.input.getBoundingClientRect();
+    const popupHeight = state.popup.getBoundingClientRect().height;
+    let top = rect.bottom + 4;
+    if (top + popupHeight > window.innerHeight && rect.top - 4 - popupHeight > 0) {
+      top = rect.top - 4 - popupHeight;
+    }
+
+    state.popup.style.left = `${rect.left}px`;
+    state.popup.style.width = `${rect.width}px`;
+    state.popup.style.top = `${top}px`;
+  }
+
+  private moveTagSuggestion(delta: number): void {
+    const state = this.tagSuggest;
+    if (!state || state.items.length === 0) return;
+    state.activeIndex = (state.activeIndex + delta + state.items.length) % state.items.length;
+    this.highlightTagSuggestItem();
+  }
+
+  /**
+   * Replaces the segment around the caret with `tag` and leaves a `", "` so the
+   * next tag can be typed straight away. The programmatic edit re-dispatches
+   * `input`, which keeps the card, the save and the (now filtered) popup in sync.
+   */
+  private acceptTagSuggestion(index: number): void {
+    const state = this.tagSuggest;
+    const tag = state?.items[index];
+    if (!state || !tag) return;
+
+    const input = state.input;
+    const value = input.value;
+    const caret = input.selectionStart ?? value.length;
+    const start = value.lastIndexOf(",", Math.max(0, caret - 1)) + 1;
+    const nextComma = value.indexOf(",", caret);
+    const end = nextComma === -1 ? value.length : nextComma;
+
+    // Rebuild the list so separator spacing stays tidy whether the caret is in
+    // the middle of the string or at the end.
+    const before = value.slice(0, start).replace(/[\s,]+$/, "");
+    const after = value.slice(end).replace(/^[\s,]+/, "");
+    const rebuilt = (before ? before + ", " : "") + tag + (after ? ", " + after : ", ");
+
+    input.value = rebuilt;
+    // Leave the caret after the accepted tag; when it was the last segment,
+    // sit at the very end so the next tag can be typed straight away.
+    const afterTag = (before ? before.length + 2 : 0) + tag.length;
+    const caretAfter = after ? afterTag : rebuilt.length;
+    input.setSelectionRange(caretAfter, caretAfter);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  private onTagInputKeyDown(event: KeyboardEvent, input: HTMLInputElement): void {
+    const state = this.tagSuggest;
+    if (!state || state.input !== input) return;
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      this.moveTagSuggestion(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      this.acceptTagSuggestion(state.activeIndex);
+    } else if (event.key === "Tab") {
+      // Accept but let the default move focus on, so Tab keeps its usual job.
+      this.acceptTagSuggestion(state.activeIndex);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      this.closeTagSuggest();
+    }
+  }
+
+  private closeTagSuggest(): void {
+    const state = this.tagSuggest;
+    if (!state) return;
+    this.tagSuggest = null;
+    state.cleanup();
+    state.popup.remove();
   }
 
   private closeBacklinksPopup(): void {
