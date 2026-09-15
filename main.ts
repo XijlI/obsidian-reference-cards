@@ -34,7 +34,7 @@ export default class ReferenceCardsPlugin extends Plugin {
       refIdColor:
         typeof loaded.refIdColor === "string" ? loaded.refIdColor : DEFAULT_SETTINGS.refIdColor,
       sortField:
-        loaded.sortField === "manual" ||
+        loaded.sortField === "citation" ||
         loaded.sortField === "title" ||
         loaded.sortField === "year"
           ? loaded.sortField

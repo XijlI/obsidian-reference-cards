@@ -1,10 +1,12 @@
 import { ItemView, WorkspaceLeaf, App, MarkdownView, Notice, setIcon } from "obsidian";
-import { ReferenceCard, PluginData, createEmptyCard, getAllTags, orderCards } from "./data";
+import { ReferenceCard, PluginData, createEmptyCard, getAllTags } from "./data";
 import { ReferenceCardsSettings, SortField } from "./settings";
 import { collectRefIds, escapeRegExp, generateCardId, maskProtectedRegions } from "./refs";
 import { buildMarkdownLink, extractPastedLink, fetchLinkTitle, isMarkdownLink } from "./link-title";
 
 export const VIEW_TYPE = "reference-cards-view";
+
+const CITATION_SORT_TOOLTIP = "Sort cards by the first appearence in current file";
 
 interface DeleteSnapshot {
   deletedCard: ReferenceCard;
@@ -20,8 +22,6 @@ export class ReferenceCardView extends ItemView {
   private searchQuery: string = "";
   private cardContainer: HTMLElement;
   private headerEl: HTMLElement;
-  private reorderSnapshot: string[] | null = null;
-  private reorderRedoSnapshot: string[] | null = null;
   private deleteSnapshot: DeleteSnapshot | null = null;
   private deleteRedoSnapshot: { cardId: string } | null = null;
   private activeBacklinksPopup: HTMLElement | null = null;
@@ -130,23 +130,27 @@ export class ReferenceCardView extends ItemView {
 
     const sortSelect = sortRow.createEl("select", { cls: "ref-cards-sort-select" });
     sortSelect.createEl("option", { text: "Added", value: "added" });
-    sortSelect.createEl("option", { text: "Manual", value: "manual" });
+    sortSelect.createEl("option", {
+      text: "Citation",
+      value: "citation",
+      title: CITATION_SORT_TOOLTIP,
+    });
     sortSelect.createEl("option", { text: "Title", value: "title" });
     sortSelect.createEl("option", { text: "Year", value: "year" });
     sortSelect.value = this.settings.sortField;
+    // Option titles only show while the dropdown is open, so mirror the
+    // explanation on the closed control as well.
+    sortSelect.title = this.settings.sortField === "citation" ? CITATION_SORT_TOOLTIP : "";
 
     const orderBtn = sortRow.createEl("button", {
       cls: "ref-cards-order-btn",
       text: this.settings.sortAscending ? "↑" : "↓",
     });
-    // Manual order follows the persisted array order, so ascending/descending
-    // has nothing to flip.
-    orderBtn.disabled = this.settings.sortField === "manual";
     orderBtn.title = this.settings.sortAscending ? "Ascending" : "Descending";
 
     sortSelect.addEventListener("change", () => {
       this.settings.sortField = sortSelect.value as SortField;
-      orderBtn.disabled = this.settings.sortField === "manual";
+      sortSelect.title = this.settings.sortField === "citation" ? CITATION_SORT_TOOLTIP : "";
       void this.saveData();
       this.renderCards();
     });
@@ -158,28 +162,6 @@ export class ReferenceCardView extends ItemView {
       void this.saveData();
       this.renderCards();
     });
-
-    const reorderBtn = sortRow.createEl("button", {
-      cls: "ref-cards-sort-btn ref-cards-sort-btn-icon",
-    });
-    setIcon(reorderBtn, "arrow-up-down");
-    reorderBtn.title = "Reorder cards by {id} order in current file";
-    reorderBtn.addEventListener("click", () => this.reorder());
-
-    const undoBtn = sortRow.createEl("button", {
-      cls: "ref-cards-sort-btn ref-cards-sort-btn-icon" + (!this.reorderSnapshot && !this.reorderRedoSnapshot ? " ref-cards-sort-btn-disabled" : ""),
-    });
-    if (this.reorderRedoSnapshot) {
-      setIcon(undoBtn, "redo-2");
-      undoBtn.title = "Redo reorder";
-      undoBtn.disabled = false;
-      undoBtn.addEventListener("click", () => this.redoReorder());
-    } else {
-      setIcon(undoBtn, "undo-2");
-      undoBtn.title = "Undo reorder";
-      undoBtn.disabled = !this.reorderSnapshot;
-      undoBtn.addEventListener("click", () => this.undoReorder());
-    }
 
     const undoDeleteBtn = sortRow.createEl("button", {
       cls: "ref-cards-sort-btn ref-cards-sort-btn-icon" + (!this.deleteSnapshot && !this.deleteRedoSnapshot ? " ref-cards-sort-btn-disabled" : ""),
@@ -213,9 +195,21 @@ export class ReferenceCardView extends ItemView {
       });
     }
 
-    // "Manual" keeps the array order above, which reorder() rewrites; every
-    // other mode derives its own order and leaves the persisted array alone.
-    if (this.settings.sortField !== "manual") {
+    // "Citation" ranks each card by the first `{id}` appearance in the active
+    // note; cards the note does not cite are pinned after the cited ones in
+    // their persisted array order. Ascending/descending flips only the cited
+    // cards, so the uncited ones never jump to the top.
+    if (this.settings.sortField === "citation") {
+      const rank = new Map(this.getCitationOrder().map((id, index) => [id, index]));
+      filtered.sort((a, b) => {
+        const ra = rank.get(a.id);
+        const rb = rank.get(b.id);
+        if (ra === undefined && rb === undefined) return 0;
+        if (ra === undefined) return 1;
+        if (rb === undefined) return -1;
+        return this.settings.sortAscending ? ra - rb : rb - ra;
+      });
+    } else {
       filtered.sort((a, b) => {
         let cmp = 0;
         if (this.settings.sortField === "title") {
@@ -224,7 +218,7 @@ export class ReferenceCardView extends ItemView {
           const ya = parseInt(a.year) || 0;
           const yb = parseInt(b.year) || 0;
           cmp = ya - yb;
-        } else if (this.settings.sortField === "added") {
+        } else {
           cmp = a.createdAt - b.createdAt;
         }
         return this.settings.sortAscending ? cmp : -cmp;
@@ -236,6 +230,16 @@ export class ReferenceCardView extends ItemView {
     }
 
     this.refreshAllTitleWrapLayouts();
+  }
+
+  /**
+   * Unique `{id}`s in order of first appearance in the active note, ignoring
+   * math/code spans. Empty when no note is active, which leaves the list in its
+   * persisted order.
+   */
+  private getCitationOrder(): string[] {
+    const mdView = this.getLastMarkdownView();
+    return mdView ? collectRefIds(mdView.editor.getValue()) : [];
   }
 
   /**
@@ -933,21 +937,6 @@ export class ReferenceCardView extends ItemView {
     new Notice("Delete undone.", 3000);
   }
 
-  async redoReorder(): Promise<void> {
-    if (!this.reorderRedoSnapshot) return;
-
-    this.reorderSnapshot = this.data.cards.map((c) => c.id);
-    this.applyCardOrder(this.reorderRedoSnapshot);
-    this.reorderRedoSnapshot = null;
-
-    this.settings.sortField = "manual";
-    await this.saveData();
-    // Reordering rebuilds the list, so hold the scroll position.
-    const anchor = this.captureScrollAnchor(null);
-    this.renderAll();
-    this.restoreScrollAnchor(anchor);
-  }
-
   async redoDelete(): Promise<void> {
     if (!this.deleteRedoSnapshot) return;
 
@@ -1010,60 +999,5 @@ export class ReferenceCardView extends ItemView {
     container.style.setProperty("--ref-card-font-size", this.settings.cardFontSize + "px");
     this.renderHeader();
     this.renderCards();
-  }
-
-  /**
-   * "Reorder": rearranges the card list to match the order the {id} markers
-   * first appear in the active note. IDs and note text are never changed;
-   * cards not mentioned keep their relative order at the end.
-   */
-  async reorder(): Promise<void> {
-    const mdView = this.getLastMarkdownView();
-    if (!mdView) {
-      new Notice("Open a note to reorder cards by its {id} order.", 3000);
-      return;
-    }
-
-    const order = collectRefIds(mdView.editor.getValue());
-    const seen = new Set(order);
-    for (const card of this.data.cards) {
-      if (!seen.has(card.id)) {
-        seen.add(card.id);
-        order.push(card.id);
-      }
-    }
-
-    this.reorderSnapshot = this.data.cards.map((c) => c.id);
-    this.reorderRedoSnapshot = null;
-    this.applyCardOrder(order);
-
-    // The list is only sorted by the array order in "Manual" mode, so switch to
-    // it — otherwise renderCards() would re-sort and hide the reorder.
-    this.settings.sortField = "manual";
-    await this.saveData();
-    // Reordering rebuilds the list, so hold the scroll position.
-    const anchor = this.captureScrollAnchor(null);
-    this.renderAll();
-    this.restoreScrollAnchor(anchor);
-  }
-
-  async undoReorder(): Promise<void> {
-    if (!this.reorderSnapshot) return;
-
-    this.reorderRedoSnapshot = this.data.cards.map((c) => c.id);
-    this.applyCardOrder(this.reorderSnapshot);
-    this.reorderSnapshot = null;
-
-    this.settings.sortField = "manual";
-    await this.saveData();
-    // Reordering rebuilds the list, so hold the scroll position.
-    const anchor = this.captureScrollAnchor(null);
-    this.renderAll();
-    this.restoreScrollAnchor(anchor);
-  }
-
-  /** Reorders `this.data.cards` to match `order`; unknown ids are ignored. */
-  private applyCardOrder(order: string[]): void {
-    this.data.cards = orderCards(this.data.cards, order);
   }
 }

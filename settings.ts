@@ -1,14 +1,14 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ReferenceCardsPlugin from "./main";
 
-export type SortField = "added" | "manual" | "title" | "year";
+export type SortField = "added" | "citation" | "title" | "year";
 
 export interface ReferenceCardsSettings {
   fetchLinkTitles: boolean;
   titleSoftWrap: boolean;
   cardFontSize: number;
   refIdColor: string;
-  /** Card list ordering. `manual` follows the persisted `cards` array order. */
+  /** Card list ordering. `citation` follows the first `{id}` appearance in the active note. */
   sortField: SortField;
   sortAscending: boolean;
 }

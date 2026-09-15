@@ -40,26 +40,6 @@ export function getAllTags(cards: ReferenceCard[]): string[] {
 }
 
 /**
- * Returns `cards` reordered to match `order`. Cards not named in `order` keep
- * their relative order at the end; unknown ids are ignored.
- */
-export function orderCards(cards: ReferenceCard[], order: string[]): ReferenceCard[] {
-  const byId = new Map(cards.map((card) => [card.id, card]));
-  const reordered: ReferenceCard[] = [];
-  for (const id of order) {
-    const card = byId.get(id);
-    if (card) {
-      reordered.push(card);
-      byId.delete(id);
-    }
-  }
-  for (const card of cards) {
-    if (byId.has(card.id)) reordered.push(card);
-  }
-  return reordered;
-}
-
-/**
  * Coerces whatever is in data.json into well-formed cards: string IDs, unique
  * IDs, string fields, and a creation timestamp. Legacy numeric IDs (1-3 digits)
  * are preserved so existing `{1}`-style references keep working; anything
