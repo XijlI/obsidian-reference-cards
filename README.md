@@ -4,7 +4,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 
 ## UI Preview
 
-<img width="272" height="597" alt="image" src="https://github.com/user-attachments/assets/2eeae789-c346-4de8-8f33-8526ecf7b9de" />
+<img width="431" height="1406" alt="image" src="https://github.com/user-attachments/assets/9c87b480-8fe1-48cd-95dd-3732db0696c5" />
 
 ## Features
 
