@@ -3,11 +3,19 @@ import { Compartment } from "@codemirror/state";
 import { DEFAULT_DATA, normalizeCards, PluginData } from "./data";
 import { ReferenceCardView, VIEW_TYPE } from "./view";
 import { createEditorPlugin } from "./editor-plugin";
-import { ReferenceCardsSettings, DEFAULT_SETTINGS, ReferenceCardsSettingTab, normalizeSortField } from "./settings";
+import {
+  ReferenceCardsSettings,
+  DEFAULT_SETTINGS,
+  ReferenceCardsSettingTab,
+  normalizeSortField,
+  normalizeCardBgPreset,
+  normalizeHexColor,
+} from "./settings";
 
 export default class ReferenceCardsPlugin extends Plugin {
   private data: PluginData = { ...DEFAULT_DATA };
   private view: ReferenceCardView | null = null;
+  private settingTab: ReferenceCardsSettingTab | null = null;
   private lastMarkdownView: MarkdownView | null = null;
   private editorCompartment = new Compartment();
   settings: ReferenceCardsSettings = { ...DEFAULT_SETTINGS };
@@ -33,6 +41,13 @@ export default class ReferenceCardsPlugin extends Plugin {
           : DEFAULT_SETTINGS.cardFontSize,
       refIdColor:
         typeof loaded.refIdColor === "string" ? loaded.refIdColor : DEFAULT_SETTINGS.refIdColor,
+      cardBgEnabled:
+        typeof loaded.cardBgEnabled === "boolean"
+          ? loaded.cardBgEnabled
+          : DEFAULT_SETTINGS.cardBgEnabled,
+      cardBgPreset: normalizeCardBgPreset(loaded.cardBgPreset),
+      cardBgCustomA: normalizeHexColor(loaded.cardBgCustomA, DEFAULT_SETTINGS.cardBgCustomA),
+      cardBgCustomB: normalizeHexColor(loaded.cardBgCustomB, DEFAULT_SETTINGS.cardBgCustomB),
       sortField: normalizeSortField(loaded.sortField),
       sortAscending:
         typeof loaded.sortAscending === "boolean"
@@ -40,13 +55,25 @@ export default class ReferenceCardsPlugin extends Plugin {
           : DEFAULT_SETTINGS.sortAscending,
     };
 
-    this.addSettingTab(new ReferenceCardsSettingTab(this.app, this));
+    this.settingTab = new ReferenceCardsSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
         if (leaf?.view instanceof MarkdownView) {
           this.lastMarkdownView = leaf.view;
         }
+      })
+    );
+
+    // Card background presets are theme-specific, so the panel and the
+    // settings tab (its labels and preview) have to re-render when the theme
+    // switches between dark and light, or a snippet loads.
+    this.registerEvent(
+      this.app.workspace.on("css-change", () => {
+        if (!this.settings.cardBgEnabled) return;
+        this.refreshView();
+        this.settingTab?.refreshTheme();
       })
     );
 

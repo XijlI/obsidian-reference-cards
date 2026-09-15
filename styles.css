@@ -252,7 +252,6 @@
   100% {
     border-color: var(--background-modifier-border);
     box-shadow: none;
-    background-color: var(--background-primary);
   }
 }
 
@@ -560,6 +559,33 @@
 .ref-card-url-link {
   color: var(--link-external-color);
   text-decoration-style: solid;
+}
+
+/* Settings preview of the alternating card background colors. */
+.ref-card-bg-preview {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 18px;
+}
+
+.ref-card-bg-swatch {
+  flex: 1;
+  min-width: 0;
+}
+
+.ref-card-bg-swatch-color {
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.ref-card-bg-swatch-label {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ref-card-wikilink {

@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, App, MarkdownView, Notice, setIcon } from "obsidian";
 import { ReferenceCard, PluginData, createEmptyCard, getAllTags } from "./data";
-import { ReferenceCardsSettings, SortField } from "./settings";
+import { ReferenceCardsSettings, SortField, getCardBackgroundColors } from "./settings";
 import { collectRefIds, escapeRegExp, generateCardId, maskProtectedRegions } from "./refs";
 import { buildMarkdownLink, extractPastedLink, fetchLinkTitle, isMarkdownLink } from "./link-title";
 
@@ -255,8 +255,14 @@ export class ReferenceCardView extends ItemView {
       });
     }
 
-    for (const card of filtered) {
-      this.renderCard(card);
+    // Loop the two background colours down the rendered list: index 0,2,4…
+    // takes colour A and 1,3,5… takes colour B. Computed once per rebuild.
+    const bgColors = this.settings.cardBgEnabled
+      ? getCardBackgroundColors(this.settings)
+      : null;
+
+    for (const [index, card] of filtered.entries()) {
+      this.renderCard(card, bgColors ? bgColors[index % 2] : null);
     }
 
     this.refreshAllTitleWrapLayouts();
@@ -315,8 +321,14 @@ export class ReferenceCardView extends ItemView {
     this.cardContainer.scrollTop += current - anchor.top;
   }
 
-  private renderCard(card: ReferenceCard): void {
+  private renderCard(card: ReferenceCard, backgroundColor: string | null = null): void {
     const cardEl = this.cardContainer.createDiv({ cls: "ref-card", attr: { "data-card-id": String(card.id) } });
+
+    // Inline rather than a container variable so the new-card ghost (a clone
+    // appended to `document.body`) carries the colour too.
+    if (backgroundColor) {
+      cardEl.style.backgroundColor = backgroundColor;
+    }
 
     const topRow = cardEl.createDiv({ cls: "ref-card-top" });
 

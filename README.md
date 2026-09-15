@@ -26,6 +26,7 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 - Show which vault files reference a card via the **?** button
 - Math and code blocks are ignored, so LaTeX like `\frac{1}{N}` inside `$…$` is never mistaken for a reference
 - Configurable card font size (10–20px)
+- Optional alternating card background colors: pick one of five presets for dark mode and five for light mode (they follow your Obsidian theme), or set your own two colors
 
 ## Usage
 
@@ -64,6 +65,8 @@ Manage reference cards in a side panel and link them to your notes with `{id}` m
 | Title soft wrap | Allow long titles to wrap across multiple lines (default: on). Titles longer than three lines switch to a compact layout: the `[id]` and action buttons move to the top row and the title gets the full card width below them |
 | Card font size | Adjust the font size of card content, 10–20px (default: 13) |
 | Reference ID color | Color for `{id}` highlights in the editor and for the `[id]` badge on cards (default: link color) |
+| Card background colors | Give cards alternating background colors. The 1st, 3rd, 5th… card uses color A and the 2nd, 4th, 6th… uses color B (default: off) |
+| Background preset | One of five preset pairs. The list follows your theme: pick in dark mode for the dark pairs, in light mode for the light pairs. Choosing **Custom** reveals two color pickers |
 
 ## License
 
